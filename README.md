@@ -43,16 +43,16 @@ include("./main.jl")
 
 Each simulation is launched individually for a given set of days.
 
-1. Classic reserve with envelope constraints and a set of multipliers μ:
+1. Classic reserve with 'envelope' constraints and a set of multipliers μ:
 
 ```
-generate_ed_solutions(days = [1,2,3,4,5,6,7], μs=[0, 0.2, 0.3, 0.4, 0.6, 0.8, 0.9, 1], input_folder = "./input/simulation_input", output_folder = "./output/simulation_output")
+generate_ed_solutions(days = [1,2,3,4,5,6,7], μs=[0, 0.2, 0.3, 0.4, 0.6, 0.8, 0.9, 1], input_folder = "./input/SDG&E_ρ_0.8", output_folder = "./output/simulation_output")
 ```
 
 2. Energy reserve with 'energy envelope' constraints:
 
 ```
-generate_ed_solutions(days = [1,2,3,4,5,6,7], μs=[1], input_folder = "./input/simulation_input", output_folder = "./output/simulation_output", energy_reserve = true)
+generate_ed_solutions(days = [1,2,3,4,5,6,7], μs=[1], input_folder = "./input/SDG&E_ρ_0.8", output_folder = "./output/simulation_output", energy_reserve = true)
 ```
 We note that 'energy envelopes' include a multipliers μ that needs to be set to 1 to get the standard formulation. 
 
