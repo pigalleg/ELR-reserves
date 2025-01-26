@@ -326,7 +326,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, configuration
     end
     # s_uc = NamedTuple(s_uc)
     if write
-        if !isdir(output_folder) mkdir(output_folder) end
+        if !isdir(output_folder) mkpath(output_folder) end
         folder_path = joinpath(output_folder,"n_$(join(days,"-"))")
         solution_to_parquet(s_uc, "s_uc", folder_path)
         solution_to_parquet(s_ed, "s_ed", folder_path)
@@ -354,7 +354,7 @@ function generate_suc_solutions(;days, kwargs...)
         s_suc =  get_model_solution(suc, gen_df, gen_variable_multi_df; scenarios = scenarios, config...)
         # merge_solutions(s_suc, [:day])
         if write
-            if !isdir(output_folder) mkdir(output_folder) end
+            if !isdir(output_folder) mkpath(output_folder) end
             folder_path = joinpath(output_folder,"n_$(join(day,"-"))")
             solution_to_parquet(s_suc, "s_suc", folder_path)
         end
