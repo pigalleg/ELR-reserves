@@ -8,7 +8,7 @@ To get started with this project, follow the steps below:
 
 1. Clone the repository:
     ```sh
-    git clone https://github.com/yourusername/energy_reserve.git
+    git clone https://github.com/pigalleg/energy_reserve.git
     cd energy_reserve
     ```
 
