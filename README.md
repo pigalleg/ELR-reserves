@@ -72,7 +72,7 @@ Optional arguments include:
 3.- Stochastic model
 
 ```
-generate_suc_solutions(days = [1,2,3,4,5,6,7], input_folder = "./input/simulation_input", output_folder = "./output/simulation_output", expected_min_SOE = false)
+generate_suc_solutions(days = [1,2,3,4,5,6,7], input_folder = "./input/SDG&E_ρ_0.8", output_folder = "./output/simulation_output", expected_min_SOE = false)
 ```
 If ``expected_min_SOE = true``, then the expected end-of-horizon SOE must be higuer or equal to the 'final_energy_proportion' parameter found in the 'Storage_data.csv' input file. The expected end-of-horizon SOE is set to the initial stored energy otherwise.
 
