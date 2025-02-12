@@ -36,7 +36,7 @@ To activate the Julia package before each run, you can use one of the following 
 
 ## Simulation framework run
 
-To run the complete simulation framework i.e, a Unit Committment followed by several Economic Dispatches (Monte Carlo), first include the main script in the Julia REPL:
+To run the complete simulation framework i.e., a Unit Committment followed by several Economic Dispatches (Monte Carlo), first include the main script in the Julia REPL:
 ```julia
 include("./main.jl")
 ```
