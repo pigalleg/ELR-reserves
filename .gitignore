@@ -5,5 +5,4 @@ git-filter-repo.py
 *ignore*
 input/base_case_v1
 input/base_case_v1.2
-output 
 input/changelog.xlsx 

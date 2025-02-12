@@ -106,7 +106,7 @@ end
 function add_storage(model, storage, loads, gen_df, sets)
     T = sets.T 
     T_incr = copy(T)
-    pushfirst!(T_incr, T_incr[1]-1)
+    pushfirst!(T_incr, T_incr[1]-1) # T_incr = [t[1]-1,T]
     S = create_storage_sets(storage)
     
     GEN = model[:GEN]
@@ -115,7 +115,7 @@ function add_storage(model, storage, loads, gen_df, sets)
         CH[S,T] >= 0
         DIS[S,T] >= 0
         SOE[S,T_incr] >= 0 # T_incr captures SOE at t = T[1]-1
-        M[S,T], Bin
+        M[S,T], Bin # (charging mode) M[s,t] = 1  => DIS[s,t] = 0, (discharging mode) M[s,t] = 0 => CH[s,t] = 0
     end)
 
     # Redefinition of objecive function
@@ -233,7 +233,11 @@ function add_storage_reserve_power_constraints(model, storage, sets)
         RESUPCH[S, T] >= 0
         RESDNCH[S, T] >= 0
         RESDNDIS[S, T] >= 0
-        U[S,T], Bin
+        # U[s,t] = 0 reserve up offered only by reducing charging rate. 
+        # U[s,t] = 1 reserve up offered by reducing charging rate to 0 + increasing discharging rate
+        U[S,T], Bin 
+        # D[s,t] = 0 reserve down offered only by reducing discharging. 
+        # D[s,t] = 1 reserve down offered by reducing discharging rate to 0 + increasing charging rate
         D[S,T], Bin
     end)
 
