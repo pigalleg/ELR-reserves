@@ -8,6 +8,7 @@ function DUC(gen_df, loads, gen_variable, mip_gap)
     # model = direct_model(Gurobi.Optimizer(GRB_ENV ))
     
     model = Model(Gurobi.Optimizer)
+    # model = direct_model(Gurobi.Optimizer());
     set_optimizer_attribute(model, "MIPGap", mip_gap)
     @variable(model, MIPGap in Parameter(mip_gap))
     # set_optimizer_attribute(model, "LogFile", "./output/log_file.txt")
@@ -329,7 +330,7 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
         RESDNCH = model[:RESDNCH]
         RESDNDIS = model[:RESDNDIS]
 
-        # Energy constraints # important for μ<1
+        # Energy constraints # important for μ=0 ?
         # @constraint(model, ResUpStorageDisMax[s in S, t in T],
         #     RESUPDIS[s,t] <= (SOE[s,t]- storage[storage.r_id .== s,:min_energy_mwh][1])*storage[storage.r_id .== s,:discharge_efficiency][1] #TODO: include delta_T
         # )
