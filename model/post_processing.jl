@@ -1,7 +1,7 @@
 using DataFrames
 
 FIELD_FOR_ENRICHING = [:r_id, :resource, :full_id]
-SOLUTION_KEYS = [:demand, :generation, :storage, :reserve, :energy_reserve, :scalar, :generation_parameters, :storage_parameters, :objective_function]
+SOLUTION_KEYS = [:demand, :generation, :storage, :reserve, :energy_reserve, :scalar, :generation_parameters, :storage_parameters, :objective_function, :dual_variables]
 
 function value_to_df(var, stochastic)
     if stochastic
@@ -58,24 +58,54 @@ function value_to_df_2dim(var)
     return solution
 end
 
-function get_solution(model, stochastic = false)
+function get_fixed_model(model)
+    # TODO: this function should be called in solve_economic_dispatch_ and solve_unit_commitment rather than by get_solution
+    # the main problem is that get_solution is called in main
+    # Logging.disable_logging(Logging.Warn)
+    model_ = JuMP.copy(model) # copy is needed because the original model might be used in the next Montecarlo iteration
+    set_optimizer(model_, Gurobi.Optimizer)
+    set_optimizer_attribute(model_, "OutputFlag", 0)
+    set_optimizer_attribute(model_, "MIPGap", get_optimizer_attribute(model,"MIPGap")) 
+    optimize!(model_) # needs to be solved after copying. Check: objective_value(model_) == objective_value(model)
+    fix_discrete_variables(model_) #https://jump.dev/JuMP.jl/stable/api/JuMP/#JuMP.fix_discrete_variables
+    # Gurobi.GRBconverttofixed(backend(model_).optimizer.model) # https://docs.gurobi.com/projects/optimizer/en/current/reference/c/solving.html#c.GRBconverttofixed
+    optimize!(model_) # needs to be re-solved after fixing
+    return model_
+end
+
+function get_solution(model, stochastic = false, get_dual_variables = false)
+    if get_dual_variables # when get_dual_variables = true, output contains the fixed model's solution
+        model_ = get_fixed_model(model)
+    else
+        model_ =  model
+    end
     return merge(
-        get_solution_variables(model, stochastic),
-        (scalar = DataFrame(objective_value = objective_value(model), termination_status = termination_status(model), OPEX = value(model[:OPEX])),)
-        # (objective_value = objective_value(model), termination_status = termination_status(model))
+        get_solution_variables(model_, stochastic),
+        get_solution_dual_variables(model_, stochastic),
+        (scalar = DataFrame(objective_value = objective_value(model_), termination_status = termination_status(model_), OPEX = value(model_[:OPEX])),),
     )
 end
 
 function get_solution_variables(model, stochastic)
     variables_to_get = [:GEN, :COMMIT, :SHUT, :START, :CH, :DIS, :SOE, :SOEUP, :SOEDN, :ESOEUP, :ESOEDN, :RESUP, :CHRESDNCH, :CHRESUPCH, :DISRESUPDIS, :DISRESDNDIS, :RESDN, :ERESUP, :ERESDN, :LOL, :LGEN, :SOEUP_EC, :SOEDN_EC, :RESUPDIS, :RESUPCH, :RESDNDIS, :RESDNCH]   
-
     return NamedTuple(k => value_to_df(model[k], stochastic) for k in intersect(keys(object_dictionary(model)), variables_to_get))
 end
 
+function get_solution_dual_variables(model, stochastic)
+    constraints_to_get = [:SupplyDemandBalance]
+    if has_duals(model)
+        return NamedTuple(Symbol("$(string(k))_dual") => value_to_df(dual.(model[k]), stochastic) for k in intersect(keys(object_dictionary(model)), constraints_to_get))
+    else
+        return NamedTuple()
+    end
+end
 
 function get_model_solution(model, gen_df, gen_variable; loads = nothing, scenarios = nothing, config...)
     #TODO: loads not used 
     # Model is either UC or ED or SUC
+    get_dual_variables = get(config, :get_dual_variables, false)
+    storage = get(config, :storage, nothing)
+    enriched_solution = get(config, :enriched_solution, true)
     stochastic = !isnothing(scenarios)
     parameters_for_enriching = (MIPGap = parameter_value(model[:MIPGap]),)
     if haskey(model, :VRESERVE) # UC
@@ -87,17 +117,16 @@ function get_model_solution(model, gen_df, gen_variable; loads = nothing, scenar
             VLGEN = Array(parameter_value.(model[:VLGEN])))
         )
     end
-    if get(config, :enriched_solution, true)
+    if enriched_solution
+        get_objective_function = true
         if stochastic
             loads_ = stack(scenarios.demand, Not([:day,:hour]), variable_name = :scenario, value_name = :demand)
-            get_objective_function = true
         else
             loads_ = loads  
-            get_objective_function = true
         end
-        return enrich_dfs(get_solution(model, stochastic), gen_df, loads_, gen_variable, get(config, :storage, nothing), parameters_for_enriching, get_objective_function) 
+        return enrich_dfs(get_solution(model, stochastic, get_dual_variables), gen_df, loads_, gen_variable, storage, parameters_for_enriching, get_objective_function) 
     else
-        return get_solution(model, stochastic)
+        return get_solution(model, stochastic, get_dual_variables)
     end
 end
 
@@ -105,23 +134,24 @@ function enrich_dfs(solution, gen_df, loads, gen_variable, storage, parameters, 
     #TODO: deal with missing values
     #TODO: include objective_function for stochastic solution
     
-    # out = Dict(pairs(solution[[:objective_value, :termination_status]]))
     out = Dict(pairs(solution[[:scalar]]))
-    # out = Dict(:generation => get_enriched_generation(solution, gen_df, gen_variable))
     out[:generation] = get_enriched_generation(solution, gen_df, gen_variable)
     out[:generation_parameters] = get_generation_parameters(gen_df)
     
     data = copy(gen_df[!,FIELD_FOR_ENRICHING]) # data for enriching
-    if !isnothing(storage)
+    if !isnothing(storage)  # storage elements are stored
         append!(data, storage[!,FIELD_FOR_ENRICHING] )
         out[:storage] = get_enriched_storage(solution, data)
         out[:storage_parameters] = get_storage_parameters(storage)
     end
-    if haskey(solution, :RESUP) & haskey(solution, :RESDN)
+    if haskey(solution, :RESUP) & haskey(solution, :RESDN) # if reserve elements are stored
         out[:reserve] =  get_enriched_reserve(solution, data)
     end
-    if haskey(solution, :ERESUP) & haskey(solution, :ERESDN)
+    if haskey(solution, :ERESUP) & haskey(solution, :ERESDN) # if e-reserve elements are stored
         out[:energy_reserve] =  get_enriched_energy_reserve(solution, data)
+    end
+    if haskey(solution, :SupplyDemandBalance_dual)
+        out[:dual_variables] =  get_enriched_duals(solution)
     end
     out[:demand] = get_enriched_demand(solution, loads)
     if objective_function
@@ -131,6 +161,9 @@ function enrich_dfs(solution, gen_df, loads, gen_variable, storage, parameters, 
     return NamedTuple(out)
 end
 
+function get_enriched_duals(solution)
+    return rename(solution.SupplyDemandBalance_dual, :value => :marginal_price_MU_MWh)
+end
 
 function get_enriched_energy_reserve(solution, data)
     return leftjoin(

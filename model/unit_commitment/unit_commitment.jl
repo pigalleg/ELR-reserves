@@ -77,7 +77,6 @@ function solve_unit_commitment(gen_df, loads, gen_variable, scenarios = nothing;
     optimize!(uc)
     if !is_solved_and_feasible(uc)
         include("./debugging_ignore.jl")
-       
         # relax_reserve_requirement(uc, kwargs[:reserve])
         @infiltrate   
         # list = get_conflicting_constraints(uc)

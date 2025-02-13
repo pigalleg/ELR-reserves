@@ -284,6 +284,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, configuration
         # :naive_envelopes => get(kwargs, :naive_envelopes, false),
         :variables_to_constrain => get(kwargs, :variables_to_constrain, [:GEN]),
         :storage_reserve_repartition =>  get(kwargs, :storage_reserve_repartition, 1),
+        :get_dual_variables => get(kwargs, :get_dual_variables, false),
     )
     # configurations = vcat(configurations, [:base_ramp_storage_energy_reserve_cumulated])
     s_uc = Dict()
@@ -342,6 +343,7 @@ function generate_suc_solutions(;days, kwargs...)
         config = Dict(
             :storage => storage_df,
             :VLGEN => get(kwargs, :VLGEN, 0),
+            :get_dual_variables => get(kwargs, :get_dual_variables, false),
             )
         suc = solve_unit_commitment(
             gen_df,

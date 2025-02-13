@@ -38,7 +38,7 @@ end
 # TODO change gen_variable => gen_varialbe_df, loads => loads_df
 function construct_economic_dispatch(uc, loads, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool, variables_to_constrain::Vector{Symbol}, VLOL::Union{Float64,Int64,Vector}, VLGEN::Union{Float64,Int64,Vector})
     #TODO: remove loads from arguments
-    println("Constructing EC...")
+    println("Constructing ED...")
     # Outputs EC by fixing variables of UC
     T, __ = create_time_sets(loads)
     VLOL = convert_to_indexed_vector(VLOL, T)
@@ -469,8 +469,8 @@ function solve_economic_dispatch_get_solution(uc, gen_df, loads, gen_variable; k
     ed = construct_economic_dispatch(uc, loads[!,[HOUR, DEMAND]], constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain, VLOL, VLGEN)
     # save_model_to_file(ed,"ed")
     solutions = Dict()
-    
     kwargs = Dict(kwargs)
+    # At this point one idea would be to copy several instances of ed so all of them use the same input solution from uc
     for k in first(propertynames(loads[!, Not([HOUR,:day])]), max_iterations)
         println("")
         println("Montecarlo iteration: $k")
