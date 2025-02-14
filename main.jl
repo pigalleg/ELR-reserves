@@ -3,7 +3,7 @@ include("./model/pre_processing.jl")
 include("./model/post_processing.jl")
 include("./model/unit_commitment/unit_commitment.jl")
 include("./model/economic_dispatch.jl")
-# include("./notebooks/plotting.jl")
+include("./notebooks/plotting.jl")
 include("./notebooks/processing.jl")
 
 # __revise_mode__ = :eval
@@ -115,25 +115,31 @@ function load_scenarios(day, input_folder, loads_multi_df, required_reserve)
     return scenarios
 end
 
-function duc(;kwargs...)
-    input_folder = get(kwargs, :input_folder, G_input_folder)
-    day = get(kwargs, :day, G_day)
+function duc(input_folder, day; kwargs)
+    # input_folder = get(kwargs, :input_folder, G_input_folder)
+    # day = get(kwargs, :day, G_day)
     gen_df, loads_multi_df, random_loads_multi_df, gen_variable_multi_df, storage_df, required_reserve = load_deterministic_data(day, input_folder, G_ε, G_ρ)
-    return solve_unit_commitment(
-        gen_df,
-        loads_multi_df,
-        gen_variable_multi_df;
-        storage = storage_df,
+    config = (
+        ramp_constraints = true,
+        enriched_solution = true,
+        # storage = storage_df,
         # reserve = required_reserve,
         storage_envelopes = true,
+        get_dual_variables = true,
         # energy_reserve = load_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, G_ε, G_ρ),
         # energy_reserve = generate_energy_reserves_deprecated(required_reserve),
         # energy_reserve = generate_energy_reserves_cumulative(required_reserve),
         storage_link_constraint = false,
         μ_up = get(kwargs, :μ_up, 1),
         μ_dn = get(kwargs, :μ_dn, 1),
+    )
+    model= solve_unit_commitment(
+        gen_df,
+        loads_multi_df,
+        gen_variable_multi_df;
         config...
         )
+    return model, get_model_solution(model, gen_df, gen_variable_multi_df; loads = loads_multi_df, config...)
 end
 
 function suc(;kwargs...)
@@ -389,3 +395,7 @@ function run()
         generate_ed_solutions(days = days, μs = μs, input_folder = input_folder, output_folder = "./output/solutions_v50.$(ρ).$(srr)s", energy_reserve = energy_reserve, storage_reserve_repartition = srr)
     end
 end
+
+m_duc, s_duc = duc(input_folder = "./input/base_case_increased_storage_energy_v7.0.8.0", day = 7)
+println(s_duc.dual_variables)
+plot_results(s_duc)
