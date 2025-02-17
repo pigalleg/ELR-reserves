@@ -396,6 +396,6 @@ function run()
     end
 end
 
-m_duc, s_duc = duc(input_folder = "./input/base_case_increased_storage_energy_v7.0.8.0", day = 7)
-println(s_duc.dual_variables)
-plot_results(s_duc)
+# m_duc, s_duc = duc(input_folder = "./input/base_case_increased_storage_energy_v7.0.8.0", day = 7)
+# println(s_duc.dual_variables)
+# plot_results(s_duc)
