@@ -206,21 +206,15 @@ end
 
 # --- end pre_processing ---
 
-function generate_configuration(key, storage_df; reserve=nothing, energy_reserve=nothing)
-  function generate_envelope_configuration(μ_up, μ_dn, storage_df)
-    return Dict(
-        :ramp_constraints => true,
-        :storage => storage_df,
-        # :reserve => required_reserve,
-        # :enriched_solution => true,
-        :storage_envelopes => true,
-        :μ_up => μ_up,
-        :μ_dn => μ_dn)
-  end
-  envelope_config_key = match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", string(key))
-  μ_up = parse(Float64, replace(envelope_config_key[1], "_" => "."))
-  μ_dn = parse(Float64, replace(envelope_config_key[2], "_" => "."))
-  out =  generate_envelope_configuration(μ_up, μ_dn, storage_df)
+
+function generate_configuration(μ_up, μ_dn, storage_df; reserve=nothing, energy_reserve=nothing)
+  out = Dict(
+    :ramp_constraints => true,
+    :storage => storage_df,
+    :enriched_solution => true,
+    :storage_envelopes => true,
+    :μ_up => μ_up,
+    :μ_dn => μ_dn)
   if !isnothing(energy_reserve)
     out[:energy_reserve] = energy_reserve
   else 
@@ -228,6 +222,29 @@ function generate_configuration(key, storage_df; reserve=nothing, energy_reserve
   end
   return out
 end
+
+# function generate_configuration(key, storage_df; reserve=nothing, energy_reserve=nothing) # deprecated
+#   function generate_envelope_configuration(μ_up, μ_dn, storage_df)
+#     return Dict(
+#         :ramp_constraints => true,
+#         :storage => storage_df,
+#         # :reserve => required_reserve,
+#         # :enriched_solution => true,
+#         :storage_envelopes => true,
+#         :μ_up => μ_up,
+#         :μ_dn => μ_dn)
+#   end
+#   envelope_config_key = match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", string(key))
+#   μ_up = parse(Float64, replace(envelope_config_key[1], "_" => "."))
+#   μ_dn = parse(Float64, replace(envelope_config_key[2], "_" => "."))
+#   out =  generate_envelope_configuration(μ_up, μ_dn, storage_df)
+#   if !isnothing(energy_reserve)
+#     out[:energy_reserve] = energy_reserve
+#   else 
+#     out[:reserve] = reserve
+#   end
+#   return out
+# end
 
 function generate_reserves_old(loads, gen_variable, margin_percentage, baseload = 0)
   filter = gen_variable[!,:full_id] .== G_NET_GENERAION_FULL_ID

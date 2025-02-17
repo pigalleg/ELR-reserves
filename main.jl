@@ -251,10 +251,15 @@ function generate_post_processing_KPI_files(folder_path, folders_to_read_ = noth
 end
 
 function generate_ed_solutions(;days, kwargs...)
-    function generate_multipliers_configurations(μs)
+    function generate_multipliers_configurations(μs) #  [(key = configuration_name, value = (up = [...], down = [...]))...]  # configuration name is for labeling purposes only
         mu_to_string(x) = isinteger(x) ? string(Int(x)) : replace(string(x), "." => "_")
-        return [Symbol("base_ramp_storage_envelopes_up_$(mu_to_string(μ))_dn_$(mu_to_string(μ))") for μ in μs]
+        if isa(μs, NamedTuple) # if μs is a list of named tuples μs = [(μ_key = (up =::Vector, down=::Vector),)...]
+            return [(key = Symbol("base_ramp_storage_envelopes_$(key)"), value = value) for (key, value) in pairs(μs)]
+        else  # we assume is a list of values, μs =[float....] 
+            return [(key = Symbol("base_ramp_storage_envelopes_up_$(mu_to_string(μ))_dn_$(mu_to_string(μ))"),  value = (up = μ, down = μ)) for μ in μs]
+        end
     end
+
     folders = get(kwargs, :folders, [(get(kwargs, :input_folder, G_input_folder), get(kwargs, :output_folder, "./output"))])
     for (input_folder, output_folder) in folders
         for day in days
@@ -295,16 +300,16 @@ function generate_ed_solutions_(days, input_folder, output_folder, configuration
     # configurations = vcat(configurations, [:base_ramp_storage_energy_reserve_cumulated])
     s_uc = Dict()
     s_ed = Dict()
-    for day in days, k in configurations
+    for day in days, config_ in configurations
 
         gen_df, loads_multi_df, random_loads_multi_df, gen_variable_multi_df, storage_df, required_reserve = load_deterministic_data(day, input_folder, ε, ρ)
         required_energy_reserve = load_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, ε, ρ)
         if energy_reserve
-            config = merge(add_config, generate_configuration(k, storage_df, energy_reserve = required_energy_reserve))
+            config = merge(add_config, generate_configuration(config_.value.up, config_.value.down, storage_df, energy_reserve = required_energy_reserve))
         else
-            config = merge(add_config, generate_configuration(k, storage_df, reserve = required_reserve))
+            config = merge(add_config, generate_configuration(config_.value.up, config_.value.down, storage_df, reserve = required_reserve))
         end
-        k_reference = get_reference_configuration(k, configurations)
+        k_reference = get_reference_configuration(config_, configurations)
         if !isnothing(k_reference) & alternative_solution # if reference_solution is added, both uc and ed are will be solved with alternative model
             config = merge((reference_solution = s_uc[(day,k_reference)],), config)
         end
@@ -314,8 +319,8 @@ function generate_ed_solutions_(days, input_folder, output_folder, configuration
             gen_variable_multi_df;
             config...
         )
-        s_uc[(day,k)] = get_model_solution(uc, gen_df, gen_variable_multi_df; loads = loads_multi_df, config...)
-        s_ed[(day,k)] = solve_economic_dispatch_get_solution(
+        s_uc[(day,config_.key)] = get_model_solution(uc, gen_df, gen_variable_multi_df; loads = loads_multi_df, config...)
+        s_ed[(day,config_.key)] = solve_economic_dispatch_get_solution(
             uc,
             gen_df,
             random_loads_multi_df,
