@@ -86,13 +86,14 @@ function create_reserve(random_loads, p, output_location = nothing)
 end
 
 function create_energy_reserve(random_loads, p, output_location = nothing)
+# random loads: rows scenarios and columns hours of the day  
   # It needs :day in random_loads
   # tuples_ij(hour) = [(i_hour = i, t_hour = t) for i in hour, t in hour if i<=t] 
   # percentile_ij_(hour, value) = [sum((i.<=hour .* hour.<=t).*value) for i in unique(hour), t in unique(hour) if i<=t] 
   function aux_(i_hour, df, p)
     df_ = []
-    reserve_up_ = []
-    reserve_down_ = []
+    reserve_up_ = [] #list that includes energy reserve up requirements for different hours of the day
+    reserve_down_ = [] #list that includes energy reserve down requirements for different hours of the day
     i_ = []
     t_= []
     for t_hour in df.hour if t_hour >= i_hour
