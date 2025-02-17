@@ -11,13 +11,24 @@ function construct_deterministic_unit_commitment(gen_df, loads, gen_variable, mi
     storage_envelopes = get(kwargs, :storage_envelopes, true)
     storage_link_constraint =  get(kwargs, :storage_link_constraint, false)
     storage_reserve_repartition =  get(kwargs, :storage_reserve_repartition, 1)
-    μ_up = get(kwargs, :μ_up, 1)
-    μ_dn = get(kwargs, :μ_dn, 1)
     VRESERVE = get(kwargs, :VRESERVE, 1e-6)
     bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
     thermal_reserve = get(kwargs, :thermal_reserve, false)
     naive_envelopes = get(kwargs, :naive_envelopes, false)
     sets =  get_sets(gen_df, loads)
+    
+    μ_up = get(kwargs, :μ_up, 1)
+    μ_dn = get(kwargs, :μ_dn, 1)
+    if ndims(μ_up) == 0 # if μ_up is a scalar we convert to vector, otherwise we assume it comes as a vector with the same length as T
+        μ_up = convert_to_indexed_vector(μ_up, sets.T)
+    else
+        μ_up = Dict(sets.T.=>μ_up)
+    end 
+    if ndims(μ_dn) == 0 # if μ_up is a scalar we convert to vector, otherwise we assume it comes as a vector with the same length as T
+        μ_dn = convert_to_indexed_vector(μ_dn, sets.T)
+    else
+        μ_dn = Dict(sets.T.=>μ_dn)  
+    end
     uc = DUC(gen_df, loads, gen_variable, mip_gap)
     if !isnothing(storage)
         println("Adding storage...")

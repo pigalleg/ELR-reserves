@@ -270,7 +270,7 @@ function add_storage_reserve_power_constraints(model, storage, sets)
     )
 end
 
-function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{DataFrame, Nothing}, bidirectional_storage_reserve::Bool, storage_envelopes::Bool, naive_envelopes::Bool, thermal_reserve::Bool, storage_reserve_repartition::Union{Int64,Float64}, μ_up::Union{Int64,Float64}, μ_dn::Union{Int64,Float64}, VRESERVE::Union{Int64,Float64}, sets::NamedTuple)
+function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{DataFrame, Nothing}, bidirectional_storage_reserve::Bool, storage_envelopes::Bool, naive_envelopes::Bool, thermal_reserve::Bool, storage_reserve_repartition::Union{Int64,Float64}, μ_up::Dict, μ_dn::Dict, VRESERVE::Union{Int64,Float64}, sets::NamedTuple)
     G_thermal = sets.G_thermal
     T = sets.T
     T_red = sets.T_red
@@ -421,17 +421,17 @@ function add_envelope_constraints(model, loads, storage, μ_up, μ_dn, naive_env
     end)
     if !naive_envelopes
         @constraint(model, SOEUpEvol[s in S, t in T],
-            SOEUP[s,t]  == SOEUP[s,t-1] + (CH[s,t] + μ_dn*RESDNCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] - μ_dn*RESDNDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
+            SOEUP[s,t]  == SOEUP[s,t-1] + (CH[s,t] + μ_dn[t]*RESDNCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] - μ_dn[t]*RESDNDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
         ) #TODO: add delta_T
         @constraint(model, SOEDnEvol[s in S, t in T], 
-            SOEDN[s,t]  == SOEDN[s,t-1] + (CH[s,t] - μ_up*RESUPCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] + μ_up*RESUPDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
+            SOEDN[s,t]  == SOEDN[s,t-1] + (CH[s,t] - μ_up[t]*RESUPCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] + μ_up[t]*RESUPDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
         ) #TODO: add delta_T
     else
         @constraint(model, SOEUpEvol[s in S, t in T],
-            SOEUP[s,t]  == SOE[s,t] + μ_dn*RESDNCH[s,t]*storage[storage.r_id .== s,:charge_efficiency][1] + μ_dn*RESDNDIS[s,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
+            SOEUP[s,t]  == SOE[s,t] + μ_dn[t]*RESDNCH[s,t]*storage[storage.r_id .== s,:charge_efficiency][1] + μ_dn[t]*RESDNDIS[s,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
         ) 
         @constraint(model, SOEDnEvol[s in S, t in T], 
-            SOEDN[s,t]  == SOE[s,t] - μ_up*RESUPCH[s,t]*storage[storage.r_id .== s,:charge_efficiency][1] - μ_up*RESUPDIS[s,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
+            SOEDN[s,t]  == SOE[s,t] - μ_up[t]*RESUPCH[s,t]*storage[storage.r_id .== s,:charge_efficiency][1] - μ_up[t]*RESUPDIS[s,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
         )
     end
     # SOEUP_T_initial = SOE_T_initial
@@ -460,7 +460,7 @@ function add_envelope_constraints(model, loads, storage, μ_up, μ_dn, naive_env
     )
 end
 
-function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::Union{DataFrame, Nothing}, storage_envelopes::Bool, storage_link_constraint::Bool, thermal_reserve::Bool, μ_up::Union{Int64,Float64}, μ_dn::Union{Int64,Float64}, VRESERVE::Union{Int64,Float64}, sets::NamedTuple)
+function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::Union{DataFrame, Nothing}, storage_envelopes::Bool, storage_link_constraint::Bool, thermal_reserve::Bool, μ_up::Dict, μ_dn::Dict, VRESERVE::Union{Int64,Float64}, sets::NamedTuple)
     #TODO: include diagonal ramp reserves
     G_thermal = sets.G_thermal
     T = sets.T
@@ -618,10 +618,10 @@ function add_energy_envelope_constraints(model, storage, μ_up, μ_dn, sets)
         ESOEDN[S, j in T_incr, t in T_incr; j <= t] >= 0
     end)
     @constraint(model, ESOEUpEvol[s in S, j in T, t in T; j <= t],
-        ESOEUP[s,j,t]  == SOE[s,t] + μ_dn*ERESDNCH[s,j,t]*storage[storage.r_id .== s,:charge_efficiency][1] + μ_dn*ERESDNDIS[s,j,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
+        ESOEUP[s,j,t]  == SOE[s,t] + μ_dn[t]*ERESDNCH[s,j,t]*storage[storage.r_id .== s,:charge_efficiency][1] + μ_dn[t]*ERESDNDIS[s,j,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
     )
     @constraint(model, ESOEDnEvol[s in S, j in T, t in T; j <= t], 
-        ESOEDN[s,j,t]  == SOE[s,t] - μ_up*ERESUPCH[s,j,t]*storage[storage.r_id .== s,:charge_efficiency][1] - μ_up*ERESUPDIS[s,j,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
+        ESOEDN[s,j,t]  == SOE[s,t] - μ_up[t]*ERESUPCH[s,j,t]*storage[storage.r_id .== s,:charge_efficiency][1] - μ_up[t]*ERESUPDIS[s,j,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
     )
 
     # ESOEUP[T_initial,T_initial] = SOE[T_initial]

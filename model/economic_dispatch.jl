@@ -276,7 +276,6 @@ function generate_envelopes(model)
     SOE_constraint_list = [constraint_object.(model[:SOEEvol][s,T[1]]).func for s in S]
     η_ch =-map(coefficient, SOE_constraint_list, Array(CH[:,T[1]]))
     inv_η_dis = map(coefficient, SOE_constraint_list, Array(DIS[:,T[1]]))
-    
     if haskey(model, :SOEUP)
         μ_up, μ_dn = get_multipliers(model)
         return  generate_envelopes()
