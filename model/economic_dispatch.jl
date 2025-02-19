@@ -356,7 +356,7 @@ function remove_energy_and_reserve_constraints(model)
     # Remove reserve, energy reserve and storge envelope's associated variables/constraints
     # TODO: check fix decision variables
     keys = [:ResUpRequirement, :ResDnRequirement,
-        :EnergyResUpRequirement, :EnerResDnRequirement,
+        :EnergyResUpRequirement, :EnergyResDnRequirement,
         :ResUpThermal, :ResDnThermal, :ResUpRamp, :ResDnRamp, :ResUpRampRobust, :ResDnRampRobust,
         :EnergyResUpThermal, :EnergyResDownThermal, :EnergyResUpRamp, :EnergyResDnRamp,
         :ResUpStorage, :ResDownStorage, # TODO: no longer needed
@@ -379,7 +379,6 @@ function remove_energy_and_reserve_constraints(model)
         # :EnergyResUpThermal, :EnergyResDownThermal, :EnergyResUpRamp, :EnergyResDnRamp,
         # :EnergyResUpZero, :EnergyResDnZero,
         # :EnergyResUpStorage, :EnergyResDownStorage, :EnergyResUpLink, :EnergyResDownLink,
-        # :EnergyResUpRequirement, :EnerResDnRequirement,
 
         :OVMax, :OVMin, :ResUpThermalMin, :ResDownThermalMin, :CommitmentMin, :ResUpStorageMax, :ResUpStorageMin,
         :Startup, :Shutdown, :CommitmentStatus,

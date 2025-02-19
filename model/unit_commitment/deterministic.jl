@@ -594,7 +594,7 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
         sum(ERESUP[i, j, t] for i in G_reserve) >= reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_up_MW][1]
     )
  
-    @constraint(model, EnerResDnRequirement[j in T, t in T; j <= t],
+    @constraint(model, EnergyResDnRequirement[j in T, t in T; j <= t],
         sum(ERESDN[i, j, t] for i in G_reserve) >= reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_down_MW][1]
     )
 

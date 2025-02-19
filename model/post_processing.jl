@@ -14,13 +14,20 @@ end
 
 function value_to_df_(var)
     if var isa JuMP.Containers.DenseAxisArray
-        if ndims(var) == 2 #length(value.(var).axes) == 2
-            return value_to_df_2dim(var)
-        else
+        if ndims(var) == 1
             return value_to_df_1dim(var)
+        elseif ndims(var) == 2
+            value_to_df_2dim(var)
+        else
+            println("Could not identify type of output. Returning initial variable...")
+            return var
         end
     elseif var isa JuMP.Containers.SparseAxisArray
-        return value_to_df_multidim(var, [:r_id, :hour_i, :hour])
+        if ndims(var) == 2
+            return value_to_df_multidim(var, [:hour_i, :hour]) # this configuration is used for dual of energy reserve requirement
+        else
+            return value_to_df_multidim(var, [:r_id, :hour_i, :hour])
+        end
     else
         println("Could not identify type of output. Returning initial variable...")
         return var
@@ -91,8 +98,8 @@ function get_solution_variables(model, stochastic)
     return NamedTuple(k => value_to_df(model[k], stochastic) for k in intersect(keys(object_dictionary(model)), variables_to_get))
 end
 
-function get_solution_dual_variables(model, stochastic)
-    constraints_to_get = [:SupplyDemandBalance]
+function get_solution_dual_variables(model, stochastic) # output's keys are of the format "$(constraint_name_)_dual"
+    constraints_to_get = [:SupplyDemandBalance, :ResUpRequirement, :ResDnRequirement, :EnergyResUpRequirement, :EnergyResDnRequirement] #TODO: :SOEFinalUp, :SOEFinalDn
     if has_duals(model)
         return NamedTuple(Symbol("$(string(k))_dual") => value_to_df(dual.(model[k]), stochastic) for k in intersect(keys(object_dictionary(model)), constraints_to_get))
     else
@@ -162,7 +169,39 @@ function enrich_dfs(solution, gen_df, loads, gen_variable, storage, parameters, 
 end
 
 function get_enriched_duals(solution)
-    return rename(solution.SupplyDemandBalance_dual, :value => :marginal_price_MU_MWh)
+    aux = rename(solution.SupplyDemandBalance_dual, :value => :dual_supply_demand_balance_MU_MW)
+    if haskey(solution, :ResUpRequirement_dual) # UC+ED. we assume that ResDnRequirement_dual is present
+        aux = innerjoin(aux,
+        rename(solution.ResUpRequirement_dual, :value => :dual_reserve_up_requirement_MU_MW),
+        rename(solution.ResDnRequirement_dual, :value => :dual_reserve_down_requirement_MU_MW),
+        
+        on = :hour,
+        )
+    elseif haskey(solution, :EnergyResUpRequirement_dual) # UC. We assume that EnergyResUpRequirement_dual is present
+        aux = leftjoin(
+            aux,
+            innerjoin(
+                rename(solution.EnergyResUpRequirement_dual, :value => :dual_energy_reserve_up_requirement_MU_MW),
+                rename(solution.EnergyResDnRequirement_dual, :value => :dual_energy_reserve_down_requirement_MU_MW),
+                on = [:hour, :hour_i]),
+            on = :hour, # value with :hour_i will be repeated
+        )
+        select!(aux, vcat([:hour, :hour_i], setdiff(Symbol.(names(aux)), [:hour, :hour_i])))
+    end
+    if haskey(solution, :SOEFinalUp_dual) # ED. We assume that SOEFinalDn_dual is present
+        # TODO: implement commented code. The problem right now is how to merge with aux, since aux do not have a r_id field
+        # aux = leftjoin(
+        #     aux,
+        #     innerjoin(
+        #         rename(solution.SOEFinalUp_dual, :value => :dual_SOE_end_up_MU_MW),
+        #         rename(solution.SOEFinalDn_dual, :value => :dual_SOE_end_down_MU_MW),
+        #         on = [:r_id,:hour]),
+        #     on = :hour   
+        # )
+        # aux = sort(aux, :hour)
+    end
+    return aux
+
 end
 
 function get_enriched_energy_reserve(solution, data)
@@ -182,8 +221,7 @@ function get_enriched_reserve(solution, data)
         innerjoin(
             rename(solution.RESUP, :value => :reserve_up_MW),
             rename(solution.RESDN, :value => :reserve_down_MW),
-            on = [:r_id, :hour]
-        ),
+            on = [:r_id, :hour]),
         data[!,FIELD_FOR_ENRICHING],
         on = :r_id
     )
