@@ -202,16 +202,16 @@ function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve
     )
 
     # ATTENTION slack variables added to power constraints  
-   @variables(model, begin
-        sUPDIS[S, j in T, t in T; j <= t] >= 0  # slack variables
-        sUPCH[S, j in T, t in T; j <= t] >= 0  
-        sDNCH[S, j in T, t in T; j <= t] >= 0 
-        sDNDIS[S, j in T, t in T; j <= t] >= 0
-        # MAXsUPDIS[S,T] >= 0  # not used
-        # MAXsUPCH[S,T] >= 0  # not used
-        # MAXsDNCH[S,T] >= 0 # not used
-        # MAXsDNDIS[S,T] >= 0# not used
-   end)
+#    @variables(model, begin
+#         sUPDIS[S, j in T, t in T; j <= t] >= 0  # slack variables
+#         sUPCH[S, j in T, t in T; j <= t] >= 0  
+#         sDNCH[S, j in T, t in T; j <= t] >= 0 
+#         sDNDIS[S, j in T, t in T; j <= t] >= 0
+#         # MAXsUPDIS[S,T] >= 0  # not used
+#         # MAXsUPCH[S,T] >= 0  # not used
+#         # MAXsDNCH[S,T] >= 0 # not used
+#         # MAXsDNDIS[S,T] >= 0# not used
+#    end)
 
 #    # ATTENTION  #auxiliary variable aims to find the 'worst' energy reserve impact from any starting time j to time t
 #     @constraint(model, slackUpDisMin[s in S, j in T, t in T; j <= t],
@@ -259,23 +259,23 @@ function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve
 
 #  Power constraints 
     @constraint(model, EnergyResUpStorageDisCapacityMax[s in S, j in T, t in T; j <= t],
-        ERESUPDIS[s,j,t] - sUPDIS[s,j,t] <= sum(
-            RESUPDIS[s,tt] for tt in T if (tt >= j)&(tt <= t) # ATTENTION slack variable added
+        ERESUPDIS[s,j,t] <= sum(
+            RESUPDIS[s,tt] for tt in T if (tt >= j)&(tt <= t) # ATTENTION slack variable removed: - sUPDIS[s,j,t]
         )
     )
     @constraint(model, EnergyResUpStorageChCapacityMax[s in S, j in T, t in T; j <= t],
-        ERESUPCH[s,j,t] - sUPCH[s,j,t] <= sum(
-            RESUPCH[s,tt] for tt in T if (tt >= j)&(tt <= t) # ATTENTION slack variable added
+        ERESUPCH[s,j,t] <= sum(
+            RESUPCH[s,tt] for tt in T if (tt >= j)&(tt <= t) # ATTENTION slack variable removed sUPCH[s,j,t]
         )
     )
     @constraint(model, EnergyResDownStorageChCapacityMax[s in S, j in T, t in T; j <= t],
-        ERESDNCH[s,j,t] - sDNCH[s,j,t] <= sum(
-            RESDNCH[s,tt] for tt in T if (tt >= j)&(tt <= t) # ATTENTION slack variable added
+        ERESDNCH[s,j,t] <= sum(
+            RESDNCH[s,tt] for tt in T if (tt >= j)&(tt <= t) # ATTENTION slack variable removed: sDNCH[s,j,t]
         )
     )
     @constraint(model, EnergyResDownStorageDisCapacityMax[s in S, j in T, t in T; j <= t],
-        ERESDNDIS[s,j,t] - sDNDIS[s,j,t] <= sum(
-            RESDNDIS[s,tt] for tt in T if (tt >= j)&(tt <= t) # ATTENTION slack variable added
+        ERESDNDIS[s,j,t] <= sum(
+            RESDNDIS[s,tt] for tt in T if (tt >= j)&(tt <= t) # ATTENTION slack variable removed: sDNDIS[s,j,t]
         )
     )
 
@@ -288,17 +288,12 @@ function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve
     @expression(model, reserve,
        sum(RESDNCH[s,t] + RESDNDIS[s,t] + RESUPCH[s,t] + RESUPDIS[s,t] for s in S for t in T)
     )
-    # @expression(model, theta_variance, # not used
-    #    sum(θDNCH[s,t]^2 + θDNDIS[s,t]^2 + θUPCH[s,t]^2 + θUPDIS[s,t]^2 for s in S for t in T)
+    # @expression(model, slack, # slacks removed
+    #    sum(sDNCH[s,j,t] + sDNDIS[s,j,t] + sUPCH[s,j,t] + sUPDIS[s,j,t] for s in S for t in T for j in T if j<=t)
     # )
-    # @expression(model, reserve_variance, # not used
-    #    sum(RESDNCH[s,t]^2 + RESDNDIS[s,t]^2 + RESUPCH[s,t]^2 + RESUPDIS[s,t]^2 for s in S for t in T)
-    # )
-    @expression(model, slack,
-       sum(sDNCH[s,j,t] + sDNDIS[s,j,t] + sUPCH[s,j,t] + sUPDIS[s,j,t] for s in S for t in T for j in T if j<=t)
-    )
+
     @objective(model, Min,
-        model[:epsilon_variance] + (model[:theta] - model[:reserve]) + model[:slack]
+        model[:epsilon_variance] + (model[:theta] - model[:reserve])# + model[:slack]
     )
    
     return model
@@ -326,7 +321,7 @@ function solve_empirical_µ_get_solution(gen_df, loads, storage, required_reserv
         :MAXERESUPDIS, :MAXERESUPCH, :MAXERESDNCH, :MAXERESDNDIS,
         :εUPDIS, :εUPCH, :εDNCH, :εDNDIS,
         :θUPDIS, :θUPCH, :θDNCH, :θDNDIS,
-        :sUPDIS, :sUPCH, :sDNCH, :sDNDIS
+        # :sUPDIS, :sUPCH, :sDNCH, :sDNDIS
     ]
     out = [rename_headers(DataFrame(Containers.rowtable(value.(model[var]))), var) for var in variables_to_save if haskey(model, var)]
     out_with_headers_i = [df for df in out if :i in Symbol.(names(df))] # out with header :i
