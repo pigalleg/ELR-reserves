@@ -91,6 +91,26 @@ function create_energy_reserve(random_loads, p, output_location = nothing)
   # tuples_ij(hour) = [(i_hour = i, t_hour = t) for i in hour, t in hour if i<=t] 
   # percentile_ij_(hour, value) = [sum((i.<=hour .* hour.<=t).*value) for i in unique(hour), t in unique(hour) if i<=t] 
   function aux_(i_hour, df, p)
+    """
+    aux_(i_hour::Int, df::DataFrame, p::Float64) -> NamedTuple
+
+    Calculate the energy reserve requirements for different hours of the day based on cumulative error percentiles.
+
+    # Arguments
+    - `i_hour::Int`: The starting hour from which to calculate the cumulative error.
+    - `df::DataFrame`: The DataFrame containing the hourly data. It is assumed to have a column `:hour` and other columns representing the error values.
+    - `p::Float64`: The percentile value to calculate the reserve requirements.
+
+    # Returns
+    - `NamedTuple`: A named tuple containing:
+      - `i_hour::Vector{Int}`: A vector of the starting hour repeated for each hour in the range.
+      - `t_hour::Vector{Int}`: A vector of the hours for which the reserve requirements are calculated.
+      - `reserve_up_MW::Vector{Float64}`: A vector of the energy reserve up requirements (in MW) for each hour.
+      - `reserve_down_MW::Vector{Float64}`: A vector of the energy reserve down requirements (in MW) for each hour.
+
+    # Description
+    This function calculates the energy reserve requirements by computing the cumulative error from the starting hour (`i_hour`) to the end of the array. It then calculates the specified percentile (`p`) of the cumulative error for the reserve up requirement and the (1-p) percentile for the reserve down requirement. The results are returned as a named tuple.
+    """ 
     df_ = []
     reserve_up_ = [] #list that includes energy reserve up requirements for different hours of the day
     reserve_down_ = [] #list that includes energy reserve down requirements for different hours of the day
@@ -110,10 +130,35 @@ function create_energy_reserve(random_loads, p, output_location = nothing)
     end
     return (i_hour = i_, t_hour = t_, reserve_up_MW = reserve_up_, reserve_down_MW = reserve_down_)
   end
+  
+  function limit_to_cumulative_sum(df_)
+    """
+    limit_to_cumulative_sum(df_::DataFrame) -> DataFrame
+
+    Adjusts the reserve requirements to ensure they do not exceed the cumulative sum of reserves.
+
+    # Arguments
+    - `df_::DataFrame`: The DataFrame containing the initial reserve requirements. It is assumed to have columns `:i_hour`, `:t_hour`, `:reserve_up_MW`, and `:reserve_down_MW`.
+
+    # Returns
+    - `DataFrame`: A DataFrame with adjusted reserve requirements where the reserve values are limited to the cumulative sum of reserves.
+
+    # Description
+    This function adjusts the reserve requirements for each hour to ensure that the reserve up and reserve down values do not exceed the cumulative sum of reserves. It iterates through each hour and calculates the minimum of the current reserve value and the cumulative sum of reserves up to that hour.
+    """
+    get_diagonal_cum_sum(i, t, df, col) = sum(df[(df.t_hour .<=t) .& (df.i_hour .>= i) .& (df.t_hour.==df.i_hour), col])
+    df = copy(df_)
+    df = transform(df, [:i_hour, :t_hour, :reserve_up_MW, :reserve_down_MW] => ByRow((i, t, r_up, r_dn) -> (
+      i, t, min(r_up, get_diagonal_cum_sum(i, t, df_, :reserve_up_MW)), min(r_dn, get_diagonal_cum_sum(i, t, df_, :reserve_down_MW))
+    )) => [:i_hour, :t_hour, :reserve_up_MW, :reserve_down_MW])
+    return df
+  end
+
   errors = transform(random_loads, Not([:hour,:day]) .=> (x -> x.- random_loads.demand), renamecols = false)
   select!(errors, Not(:demand))
   energy_reserve = combine(groupby(errors, [:day]), AsTable(:) => (x -> [aux_(i, DataFrame(x), p) for i in x.hour]) => AsTable)
   energy_reserve = combine(groupby(energy_reserve, [:day]), Not(:day) .=> (x -> reduce(vcat,x)),  renamecols = false)
+  energy_reserve = combine(groupby(energy_reserve, [:day]), AsTable(:) => (x->limit_to_cumulative_sum(DataFrame(x))) => AsTable)
   if !isnothing(output_location)
     output_file = joinpath(output_location, "uc", "Energy reserve.csv")
   else  
