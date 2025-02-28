@@ -1,11 +1,12 @@
 using JuMP
 using Gurobi
 include("../unit_commitment/utils.jl")
-function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve, mip_gap = 1e-6)
+function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve, temportal_weights, mip_gap = 1e-6)
     model = Model(Gurobi.Optimizer)
     set_optimizer_attribute(model, "MIPGap", mip_gap)
     sets = get_sets(gen_df, loads)
     T = sets.T
+
     T_incr = copy(T)
     pushfirst!(T_incr, T_incr[1]-1) # T_incr = [t[1]-1,T]
     S = create_storage_sets(storage)
@@ -13,7 +14,11 @@ function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve
     S = [S[1]]
     ηch = Dict(s => storage[storage.r_id .== s,:charge_efficiency][1] for s in S)
     ηdis = Dict(s => storage[storage.r_id .== s,:discharge_efficiency][1] for s in S)
-
+    if temportal_weights
+        ω = Dict(T .=> reverse(1:length(T))) # weight fror penalizing difference between θ and RES in objective function as a function of time
+    else
+        ω = Dict(T .=> 1)
+    end 
 
     @variables(model, begin
         RESUP[S,T] >= 0 # power reseve up
@@ -283,10 +288,10 @@ function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve
         sum(εDNCH[s,t]^2 +  εDNDIS[s,t]^2 + εUPCH[s,t]^2 + εUPDIS[s,t]^2 for s in S for t in T)
     )
     @expression(model, theta,
-       sum(θDNCH[s,t] + θDNDIS[s,t] + θUPCH[s,t] + θUPDIS[s,t] for s in S for t in T)
+       sum(ω[t]*(θDNCH[s,t] + θDNDIS[s,t] + θUPCH[s,t] + θUPDIS[s,t]) for s in S for t in T) 
     )
     @expression(model, reserve,
-       sum(RESDNCH[s,t] + RESDNDIS[s,t] + RESUPCH[s,t] + RESUPDIS[s,t] for s in S for t in T)
+       sum(ω[t]*(RESDNCH[s,t] + RESDNDIS[s,t] + RESUPCH[s,t] + RESUPDIS[s,t]) for s in S for t in T)
     )
     # @expression(model, slack, # slacks removed
     #    sum(sDNCH[s,j,t] + sDNDIS[s,j,t] + sUPCH[s,j,t] + sUPDIS[s,j,t] for s in S for t in T for j in T if j<=t)
@@ -299,7 +304,7 @@ function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve
     return model
 end
 
-function solve_empirical_µ_get_solution(gen_df, loads, storage, required_reserve, required_energy_reserve)
+function solve_empirical_µ_get_solution(gen_df, loads, storage, required_reserve, required_energy_reserve; temportal_weights = false)
     function rename_headers(df, var)
         if size(df, 2) == 4
             keys_to_rename = Dict(:x1 => :r_id, :x2 => :i, :x3 => :t, :y => Symbol(var))
@@ -311,7 +316,7 @@ function solve_empirical_µ_get_solution(gen_df, loads, storage, required_reserv
         return rename(df, keys_to_rename)
     end
 
-    model = construct_empirical_µ(gen_df, loads, storage, required_reserve, required_energy_reserve)
+    model = construct_empirical_µ(gen_df, loads, storage, required_reserve, required_energy_reserve, temportal_weights)
     optimize!(model)
     variables_to_save = [
         :RESUP, :RESDN, :RESUPDIS, :RESUPCH, :RESDNCH, :RESDNDIS,

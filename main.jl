@@ -8,7 +8,7 @@ include("./notebooks/processing.jl")
 
 # __revise_mode__ = :eval
 # ENV["COLUMNS"]=120 # Set so all columns of DataFrames and Matrices are displayed
-function plot_results(solution)
+function plot_results(solution, required_reserve)
     supply, demand = calculate_supply_demand(solution)
     p1 = plot_fieldx_by_fieldy(supply, :production_MW, :resource)
     p2 = plot_fieldx_by_fieldy(demand, :demand_MW, :resource)
@@ -41,8 +41,6 @@ function plot_results(solution)
         p5 p6
     ]
 end
-
-
 
 
 G_day = 7 # 68
@@ -115,17 +113,21 @@ function load_scenarios(day, input_folder, loads_multi_df, required_reserve)
     return scenarios
 end
 
-function duc(input_folder, day; kwargs)
+function duc(input_folder, day; kwargs...)
     # input_folder = get(kwargs, :input_folder, G_input_folder)
     # day = get(kwargs, :day, G_day)
     gen_df, loads_multi_df, random_loads_multi_df, gen_variable_multi_df, storage_df, required_reserve = load_deterministic_data(day, input_folder, G_ε, G_ρ)
+    storage_df.max_energy_mwh .=storage_df.max_energy_mwh*get(kwargs, :storage_max_energy_factor, 1)
+    storage_df.existing_cap_mw .=storage_df.existing_cap_mw*get(kwargs, :storage_max_cap_factor, 1)
     config = (
+
         ramp_constraints = true,
         enriched_solution = true,
-        # storage = storage_df,
-        # reserve = required_reserve,
+        storage = storage_df,
+        reserve = required_reserve,
         storage_envelopes = true,
         get_dual_variables = true,
+        mip_gap = get(kwargs, :mip_gap, 1e-8),
         # energy_reserve = load_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, G_ε, G_ρ),
         # energy_reserve = generate_energy_reserves_deprecated(required_reserve),
         # energy_reserve = generate_energy_reserves_cumulative(required_reserve),
@@ -139,7 +141,7 @@ function duc(input_folder, day; kwargs)
         gen_variable_multi_df;
         config...
         )
-    return model, get_model_solution(model, gen_df, gen_variable_multi_df; loads = loads_multi_df, config...)
+    return model, get_model_solution(model, gen_df, gen_variable_multi_df; loads = loads_multi_df, config...), required_reserve
 end
 
 function suc(;kwargs...)
@@ -176,7 +178,7 @@ end
 
 function merge_ed_solutions(solution_folders, folder_path, read = true, write = false)
     if read
-        keys = [:demand, :generation, :storage, :reserve, :energy_reserve, :scalar, :objective_function]
+        keys = [:demand, :generation, :storage, :reserve, :energy_reserve, :scalar, :objective_function, :dual_variables] #TODO: get this automaticaly
         s_uc = [parquet_to_solution("s_uc", joinpath(folder_path, s)) for s in solution_folders]
         s_ed = [parquet_to_solution("s_ed", joinpath(folder_path, s)) for s in solution_folders]
         s_uc = NamedTuple(k => vcat([s[k] for s in s_uc if haskey(s, k)]...) for k in keys)
@@ -401,6 +403,6 @@ function run()
     end
 end
 
-# m_duc, s_duc = duc(input_folder = "./input/base_case_increased_storage_energy_v7.0.8.0", day = 7)
+# m_duc, s_duc, required_reserve = duc("./input/base_case_increased_storage_energy_v7.0.8.1", 7)
 # println(s_duc.dual_variables)
-# plot_results(s_duc)
+# plot_results(s_duc,required_reserve)

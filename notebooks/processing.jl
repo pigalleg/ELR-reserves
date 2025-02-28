@@ -83,6 +83,7 @@ function calculate_reserve(reserve, required_reserve = nothing, group_by_ = [:ho
    # TODO: Adapt the following lines to consider the cases where group_by has more keys (e.g. :iteration, :coniguration)
   if !isnothing(required_reserve) 
     aux = copy(required_reserve)
+    aux = aux[!,union(intersect(propertynames(aux), group_by_),field_up_dn)]
     aux.resource.= "required"
     append!(reserve, aux)
   end
@@ -130,7 +131,6 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc, thres =.001) # thres = 1 Watt
       )
   group_by_big = [:configuration, :day, :iteration]
   filter = in(["onshore_wind_turbine","small_hydroelectric","solar_photovoltaic", "net_generation"]).(s_ed.generation.resource)
-  
   gcdi_KPI = outerjoin(
     combine(groupby(s_ed.demand, group_by_big), [:LOL_MW, :demand_MW] => ((x,y)->f_LOL(x,y)) => AsTable), 
     combine(groupby(s_ed.generation[filter,:], group_by_big), [:curtailment_MW, :production_MW] =>((x,y) -> f_CUR(x,y))=> AsTable),
@@ -147,8 +147,10 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc, thres =.001) # thres = 1 Watt
   # relative difference with respect to ref_configuration = :base_ramp_storage_envelopes_up_0_dn_0
   # s_ed_scalar = include_Δobjective_value(s_ed_scalar)
   # end REMOVE -- 
-
   leftjoin!(gcdi_KPI, calculate_objective_function_gcdi_KPI(s_ed, s_uc), on = group_by_big)
+  if :dual_variables in keys(s_uc) && !isempty(s_uc[:dual_variables])
+    leftjoin!(gcdi_KPI, calculate_dual_variables_gcdi_KPI(s_ed,s_uc), on = group_by_big)
+  end
   transform!(gcdi_KPI, :configuration .=> ByRow(x -> parse_configuration_to_mu(x)) .=> :mu)
   sort!(gcdi_KPI, :mu)
   return gcdi_KPI
@@ -173,8 +175,13 @@ function calculate_adecuacy_gcd_KPI(gcdi_KPI, group_by = [:configuration, :day])
     combine(groupby(gcdi_KPI, group_by), [:CURD_h, :CUR_MWh] => ((x,y)->(CURE = mean(x), ECUR = mean(y))) => AsTable), #TODO: change format
     combine(groupby(gcdi_KPI, group_by), [:objective_value, :objective_value_uc, :OPEX, :OPEX_uc, :redispatch_cost, :LOL_cost, :LGEN_cost, :reserve_cost] .=> mean .=> [:EOV, :OV_uc, :EOPEX, :OPEX_uc, :E_redispatch_cost, :EENS_cost, :ELGEN_cost, :E_reserve_cost]), #:objective_value_uc changed to :OV_uc
     on=[:configuration, :day])
+
   if :LGEN_MWh in propertynames(gcdi_KPI) # ED
     gcd_KPI = outerjoin(gcd_KPI, combine(groupby(gcdi_KPI, group_by), :LGEN_MWh => mean => :ELGEN),on = [:configuration, :day])
+  end
+
+  if :average_marginal_energy_price_uc_MU_MWh in propertynames(gcdi_KPI)
+    gcd_KPI = outerjoin(gcd_KPI, calculate_dual_variables_gcd_KPI(gcdi_KPI),on = [:configuration, :day])
   end
   transform!(gcd_KPI, :configuration .=> ByRow(x -> parse_configuration_to_mu(x)) .=> :mu)
   sort!(gcd_KPI, :mu)
@@ -247,6 +254,56 @@ function calculate_reserve_gcd_KPI(gcdi_KPI_reserve)
   gcd_KPI_reserve.delivered_r_up_ratio  = gcd_KPI_reserve.E_delivered_r_up_MWh ./gcd_KPI_reserve.E_required_r_up_MWh
   gcd_KPI_reserve.delivered_r_dn_ratio  = gcd_KPI_reserve.E_deliverered_dn_MWh ./gcd_KPI_reserve.E_required_r_dn_MWh
   return sort(transform(gcd_KPI_reserve, :configuration .=> ByRow(x -> parse_configuration_to_mu(x)) .=> :mu), :mu)
+end
+
+function calculate_dual_variables_gcdi_KPI(s_ed, s_uc) #dual_supply_demand_balance_MU_MW
+  group_by_big = [:configuration, :day, :iteration]
+  group_by = [:configuration, :day]
+  out = leftjoin(
+    combine(groupby(s_ed[:dual_variables], group_by_big),:dual_supply_demand_balance_MU_MW => mean => :average_marginal_energy_price_MU_MWh), 
+    combine(groupby(s_uc[:dual_variables], group_by), :dual_supply_demand_balance_MU_MW => mean => :average_marginal_energy_price_uc_MU_MWh),
+    on = group_by
+    )
+  if :dual_reserve_up_requirement_MU_MW in propertynames(s_uc[:dual_variables])
+    leftjoin!(
+      out, 
+      combine(groupby(s_uc[:dual_variables], group_by), 
+        [:dual_reserve_up_requirement_MU_MW, :dual_reserve_down_requirement_MU_MW, ] .=> mean .=> [:average_marginal_reserve_up_price_uc_MU_MWh, :average_marginal_reserve_down_price_uc_MU_MWh]),
+      on = group_by
+      )
+  end
+  if :dual_energy_reserve_up_requirement_MU_MW in propertynames(s_uc[:dual_variables])
+    df = s_uc[:dual_variables]
+    df = df[df.hour.==df.hour_i, :] 
+    leftjoin!(
+      out, 
+      combine(groupby(df, group_by), 
+        [:dual_energy_reserve_up_requirement_MU_MW, :dual_energy_reserve_down_requirement_MU_MW, ] .=> mean .=> [:average_marginal_energy_reserve_up_price_uc_MU_MWh, :average_marginal_energy_reserve_down_price_uc_MU_MWh]),
+      on = group_by
+      )
+  end
+  return out
+end
+
+function calculate_dual_variables_gcd_KPI(gcdi_KPI) #dual_supply_demand_balance_MU_MW
+  group_by = [:configuration, :day]
+  out =  combine(groupby(gcdi_KPI, group_by), 
+    [:average_marginal_energy_price_MU_MWh, :average_marginal_energy_price_uc_MU_MWh] .=> mean .=> [:E_average_marginal_energy_price_MU_MWh, :average_marginal_energy_price_uc_MU_MWh]
+  )
+  if :average_marginal_reserve_up_price_uc_MU_MWh in propertynames(gcdi_KPI)
+    leftjoin!(out,
+      combine(groupby(gcdi_KPI, group_by), 
+      [:average_marginal_reserve_up_price_uc_MU_MWh, :average_marginal_reserve_down_price_uc_MU_MWh] .=> mean, renamecols = false),
+      on = group_by
+    )
+  elseif :average_marginal_energy_reserve_up_price_uc_MU_MWh in propertynames(gcdi_KPI)
+    leftjoin!(out,
+    combine(groupby(gcdi_KPI, group_by), 
+    [:average_marginal_energy_reserve_up_price_uc_MU_MWh, :average_marginal_energy_reserve_down_price_uc_MU_MWh] .=> mean, renamecols = false),
+      on = group_by
+    )
+  end
+    return out
 end
 
 function calculate_objective_function_gcdi_KPI(s_ed, s_uc)
