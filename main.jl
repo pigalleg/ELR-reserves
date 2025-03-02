@@ -1,10 +1,10 @@
 using Infiltrator
 include("./model/pre_processing.jl")
 include("./model/post_processing.jl")
+include("./model/metrics.jl")
 include("./model/unit_commitment/unit_commitment.jl")
 include("./model/economic_dispatch.jl")
 include("./notebooks/plotting.jl")
-include("./notebooks/processing.jl")
 
 # __revise_mode__ = :eval
 # ENV["COLUMNS"]=120 # Set so all columns of DataFrames and Matrices are displayed
@@ -176,28 +176,53 @@ function ed(;kwargs...)
 end
 
 
-function merge_ed_solutions(solution_folders, folder_path, read = true, write = false)
-    if read
-        keys = [:demand, :generation, :storage, :reserve, :energy_reserve, :scalar, :objective_function, :dual_variables] #TODO: get this automaticaly
-        s_uc = [parquet_to_solution("s_uc", joinpath(folder_path, s)) for s in solution_folders]
-        s_ed = [parquet_to_solution("s_ed", joinpath(folder_path, s)) for s in solution_folders]
-        s_uc = NamedTuple(k => vcat([s[k] for s in s_uc if haskey(s, k)]...) for k in keys)
-        s_ed = NamedTuple(k => vcat([s[k] for s in s_ed if haskey(s, k)]...) for k in keys)
-    end
-    if write
-        name = "n_$(replace(join(solution_folders, "-"), "n_" =>""))"
-        solution_to_parquet(s_uc, "s_uc", joinpath(folder_path, name))
-        solution_to_parquet(s_ed, "s_ed", joinpath(folder_path, name))
-    end
-    return s_uc, s_ed
+function merge_solutions_df(solution_name, solution_folders, folder_path)
+    solution = [parquet_to_solution(solution_name, joinpath(folder_path, s)) for s in solution_folders]
+    solution = NamedTuple(k => vcat([s[k] for s in solution if haskey(s, k)]...) for k in Set(union([keys(x) for x in solution]...)))
+    return solution
 end
 
-function generate_post_processing_KPI_files(folder_path, folders_to_read_ = nothing, save = true)
-    function check(gcdi_KPI_adequacy, gcdi_objective_function_KPI)
+# function merge_solutions(solution_folders, folder_path, stochastic = false, write = false)
+#     uc_name = !stochastic ? "s_uc" : "s_suc"
+#     s_ed = nothing    
+#     # keys = [:demand, :generation, :storage, :reserve, :energy_reserve, :scalar, :objective_function, :dual_variables] #TODO: get this automaticaly
+#     s_uc = [parquet_to_solution(uc_name, joinpath(folder_path, s)) for s in solution_folders]
+#     s_uc = NamedTuple(k => vcat([s[k] for s in s_uc if haskey(s, k)]...) for k in Set(union([keys(x) for x in s_uc]...)))
+#     if !stochastic
+#         s_ed = [parquet_to_solution("s_ed", joinpath(folder_path, s)) for s in solution_folders]
+#         s_ed = NamedTuple(k => vcat([s[k] for s in s_ed if haskey(s, k)]...) for k in Set(union([keys(x) for x in s_ed]...)))
+#     end
+
+#     if write #DEPRECATED
+#         name = "n_$(replace(join(solution_folders, "-"), "n_" =>""))"
+#         solution_to_parquet(s_uc, uc_name, joinpath(folder_path, name))
+#         if !stochastic
+#             solution_to_parquet(s_ed, "s_ed", joinpath(folder_path, name))
+#         end
+#     end
+#     return s_uc, s_ed
+# end
+
+# function merge_suc_solutions(solution_folders, folder_path, read = true, write = false)
+#     if read
+#         s_suc = [parquet_to_solution("s_suc", joinpath(folder_path, s, n)) for n in solution_folders]
+#         s_suc = NamedTuple(k => vcat([s[k] for s in s_suc if haskey(s, k)]...) for k in Set(union([keys(x) for x in s_suc]...)))
+#     end
+#     if write
+#         name = "n_$(replace(join(solution_folders, "-"), "n_" =>""))"
+#         solution_to_parquet(s_uc, "s_suc", joinpath(folder_path, name))
+#         # solution_to_parquet(s_ed, "s_ed", joinpath(folder_path, name))
+#     end
+#     return s_uc, s_ed
+# end
+
+function generate_post_processing_KPI_files(folder_path, stochastic = false, folders_to_read_ = nothing, save = true)
+    
+    function check(gcdi_KPI_adequacy, gcdi_objective_function_KPI, group_by)
         # Check consistency in objective function
-        x = sort(gcdi_KPI_adequacy, [:configuration,:day,:iteration])
-        y = sort(gcdi_objective_function_KPI, [:configuration,:day,:iteration])
-        if !(all(isapprox.(x.objective_value,  y.OPEX .+ y.LOL_cost .+ y.LGEN_cost .+ y.reserve_cost, rtol=10^-8)))
+        x = sort(gcdi_KPI_adequacy, group_by)
+        y = sort(gcdi_objective_function_KPI, group_by)
+        if !(all(isapprox.(x.objective_value,  sum(eachcol(y[:,intersect([:OPEX, :LOL_cost, :LGEN_cost, :reserve_cost], propertynames(y))])), rtol=10^-8)))
             error("Missmatch in objective value")
         end
         if !(all(isapprox.(x.OPEX,  y.OPEX , rtol=10^-8)))
@@ -209,19 +234,29 @@ function generate_post_processing_KPI_files(folder_path, folders_to_read_ = noth
         return [arr[i:min(i + chunk_size - 1, end)] for i in 1:chunk_size:length(arr)]
     end
 
-    function KPI_df_dict(solution_folders, folder_path)
-        println("Calculating adecuacy KPIS...")
+    function KPI_df_dict(solution_folders, folder_path, stochastic = false)
+        println("Calculating KPIS...")
         out = []
-        s_uc, s_ed = merge_ed_solutions(solution_folders, folder_path)
+        # s_uc, s_ed = merge_solutions(solution_folders, folder_path, stochastic) # if stochastic == true, s_ed = nothing
+        if !stochastic
+            s_uc = merge_solutions_df("s_uc", solution_folders, folder_path)
+            s_ed = merge_solutions_df("s_ed", solution_folders, folder_path)    
+        else
+            s_uc = nothing
+            s_ed = merge_solutions_df("s_suc", solution_folders, folder_path)
+
+        end 
+        group_by =  intersect([:configuration, :day, :iteration, :scenario], propertynames(s_ed.demand)) # used only for checking
+       
         push!(out, calculate_adecuacy_gcdi_KPI(s_ed, s_uc))
         # out[:gcdi_KPI_adequacy] = calculate_adecuacy_gcdi_KPI(s_ed, s_uc)
         push!(out, calculate_adecuacy_gcd_KPI(last(out)))
-        push!(out, calculate_objective_function_gcdi_KPI(s_ed, s_uc))
-        push!(out, calculate_objective_function_gcd_KPI(last(out)))
+        push!(out, calculate_objective_function_gcdi_KPI(s_ed, s_uc,group_by)) # These KPIs are included in adequacy and are therefore not needed
+        # push!(out, calculate_objective_function_gcd_KPI(last(out))) # These KPIs are included in adecuacy and are therefore not needed
         # calculate_reserve_KPI(s_ed, s_uc)
         # calculate_reserve_gcdi_KPI(out[:KPI_reserve])
         # calculate_reserve_gcd_KPI(out[:gcdi_KPI_reserve])
-        check(out[1], out[3])
+        check(out[1], out[3], group_by)
         println("...done)")
         return out
 
@@ -244,7 +279,7 @@ function generate_post_processing_KPI_files(folder_path, folders_to_read_ = noth
         # :gcdi_KPI_reserve,
         # :gcd_KPI_reserve,
         ]
-    values = vcat.([KPI_df_dict(folders, folder_path) for folders in chunk_list_custom(folders_to_read, chunk_size)]...)
+    values = vcat.([KPI_df_dict(folders, folder_path, stochastic) for folders in chunk_list_custom(folders_to_read, chunk_size)]...)
     out = NamedTuple(k => v for (k,v) in zip(keys, values))
     if save
         solution_to_parquet(out, out_name, folder_path)
