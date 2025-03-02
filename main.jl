@@ -182,41 +182,7 @@ function merge_solutions_df(solution_name, solution_folders, folder_path)
     return solution
 end
 
-# function merge_solutions(solution_folders, folder_path, stochastic = false, write = false)
-#     uc_name = !stochastic ? "s_uc" : "s_suc"
-#     s_ed = nothing    
-#     # keys = [:demand, :generation, :storage, :reserve, :energy_reserve, :scalar, :objective_function, :dual_variables] #TODO: get this automaticaly
-#     s_uc = [parquet_to_solution(uc_name, joinpath(folder_path, s)) for s in solution_folders]
-#     s_uc = NamedTuple(k => vcat([s[k] for s in s_uc if haskey(s, k)]...) for k in Set(union([keys(x) for x in s_uc]...)))
-#     if !stochastic
-#         s_ed = [parquet_to_solution("s_ed", joinpath(folder_path, s)) for s in solution_folders]
-#         s_ed = NamedTuple(k => vcat([s[k] for s in s_ed if haskey(s, k)]...) for k in Set(union([keys(x) for x in s_ed]...)))
-#     end
-
-#     if write #DEPRECATED
-#         name = "n_$(replace(join(solution_folders, "-"), "n_" =>""))"
-#         solution_to_parquet(s_uc, uc_name, joinpath(folder_path, name))
-#         if !stochastic
-#             solution_to_parquet(s_ed, "s_ed", joinpath(folder_path, name))
-#         end
-#     end
-#     return s_uc, s_ed
-# end
-
-# function merge_suc_solutions(solution_folders, folder_path, read = true, write = false)
-#     if read
-#         s_suc = [parquet_to_solution("s_suc", joinpath(folder_path, s, n)) for n in solution_folders]
-#         s_suc = NamedTuple(k => vcat([s[k] for s in s_suc if haskey(s, k)]...) for k in Set(union([keys(x) for x in s_suc]...)))
-#     end
-#     if write
-#         name = "n_$(replace(join(solution_folders, "-"), "n_" =>""))"
-#         solution_to_parquet(s_uc, "s_suc", joinpath(folder_path, name))
-#         # solution_to_parquet(s_ed, "s_ed", joinpath(folder_path, name))
-#     end
-#     return s_uc, s_ed
-# end
-
-function generate_post_processing_KPI_files(folder_path, stochastic = false, folders_to_read_ = nothing, save = true)
+function generate_post_processing_KPI_files(folder_path; stochastic = false, folders_to_read_ = nothing, save = true)
     
     function check(gcdi_KPI_adequacy, gcdi_objective_function_KPI, group_by)
         # Check consistency in objective function
@@ -302,7 +268,7 @@ function generate_ed_solutions(;days, kwargs...)
         for day in days
             generate_ed_solutions_([day], input_folder, output_folder, generate_multipliers_configurations(get(kwargs, :μs, nothing)); kwargs...)
         end
-        generate_post_processing_KPI_files(output_folder, true)
+        generate_post_processing_KPI_files(output_folder, stochastic = false)
     end
 end
 
@@ -414,7 +380,7 @@ function generate_suc_solutions(;days, kwargs...)
     folders = get(kwargs, :folders, [(get(kwargs, :input_folder, nothing), get(kwargs, :output_folder, nothing))])
     for (input_folder, output_folder) in folders, day in days
         generate_suc_solutions_(day, input_folder, output_folder; kwargs...)
-        generate_post_processing_KPI_files(output_folder)
+        generate_post_processing_KPI_files(output_folder, stochastic = true)
     end 
 end
 
