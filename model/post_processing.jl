@@ -1,4 +1,6 @@
 using DataFrames
+using Parquet2
+include("./pre_processing.jl")
 
 FIELD_FOR_ENRICHING = [:r_id, :resource, :full_id]
 SOLUTION_KEYS = [:demand, :generation, :storage, :reserve, :energy_reserve, :scalar, :generation_parameters, :storage_parameters, :objective_function, :dual_variables]
