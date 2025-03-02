@@ -302,7 +302,7 @@ function generate_ed_solutions(;days, kwargs...)
         for day in days
             generate_ed_solutions_([day], input_folder, output_folder, generate_multipliers_configurations(get(kwargs, :μs, nothing)); kwargs...)
         end
-        generate_post_processing_KPI_files(output_folder)
+        generate_post_processing_KPI_files(output_folder, true)
     end
 end
 
@@ -414,7 +414,7 @@ function generate_suc_solutions(;days, kwargs...)
     folders = get(kwargs, :folders, [(get(kwargs, :input_folder, nothing), get(kwargs, :output_folder, nothing))])
     for (input_folder, output_folder) in folders, day in days
         generate_suc_solutions_(day, input_folder, output_folder; kwargs...)
-        # generate_post_processing_KPI_files(output_folder)
+        generate_post_processing_KPI_files(output_folder)
     end 
 end
 

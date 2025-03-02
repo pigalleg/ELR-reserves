@@ -19,7 +19,6 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
         )
 
         RES_filter = in(["onshore_wind_turbine", "small_hydroelectric", "solar_photovoltaic", "net_generation"]).(s_ed.generation.resource)
-        @infiltrate
         out = outerjoin(
             combine(groupby(s_ed.demand, group_by), [:LOL_MW, :demand_MW] => ((x, y) -> f_LOL(x, y)) => AsTable),
             combine(groupby(s_ed.generation[RES_filter, :], group_by), [:curtailment_MW, :production_MW] => ((x, y) -> f_CUR(x, y)) => AsTable),
