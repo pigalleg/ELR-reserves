@@ -292,7 +292,7 @@ function get_enriched_generation(solution, gen_df, gen_variable)
     curtail.value = curtail.cf .* curtail.existing_cap_mw - curtail.value
     aux = outerjoin(
         outerjoin(  
-            rename(solution.GEN, :value => :production_MW),
+            rename(solution.GEN, :value => :production_MW), # production refers to the actual decision variable, i.e., production + curtail = existing_cap_mw*cf
             rename(curtail[!, union(join_on, [:value])], :value => :curtailment_MW),
             rename(solution.COMMIT, :value => :commit),
             rename(solution.START, :value => :start),
@@ -341,7 +341,7 @@ function get_enriched_objective_value(enriched_solution, gen_df, storage, parame
     function check()
         aux = combine(groupby(cost, intersect([:scenario], propertynames(cost))), [:production_cost, :fixed_cost, :start_cost] .=> (x -> sum(skipmissing(x))), renamecols = false)
         sum_cost = mean(aux.production_cost.+.+aux.fixed_cost.+aux.start_cost)
-        if !isapprox(enriched_solution[:scalar].OPEX[1], sum_cost; rtol =  parameters.MIPGap)
+        if !isapprox(enriched_solution[:scalar].OPEX[1], sum_cost; rtol =  parameters.MIPGap) # OPEX = production_cost + fixed_cost + start_cost
             error("Start and operational cost missmatch with OPEX")
         end
         if :reserve_cost in propertynames(cost)
@@ -422,6 +422,9 @@ function get_storage_parameters(storage)
     return rename(storage[!,union(FIELD_FOR_ENRICHING, parameters_to_get)],[:existing_cap_mw, :max_energy_mwh] .=> [:P_max_MW, :SOE_max_MWh])
 end
 
+function change_type(df, from, to)
+    return mapcols(x -> eltype(x) == from ? to.(x) : x, df)
+  end
 
 function solution_to_parquet(s, file_name, file_folder)
     # TODO move to post_processing
