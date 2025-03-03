@@ -311,7 +311,7 @@ end
 function get_enriched_demand(solution, loads)
     join_on = intersect([:hour, :scenario], propertynames(loads))
     demand_ = "day" in names(loads) ? select(loads, Not(:day)) : loads
-    demand = rename(demand_, [ x => "demand_MW" for x in names(select(demand_,Not(join_on)))])
+    demand = rename(demand_, [ x => "demand_MW" for x in names(select(demand_,Not(join_on)))]) # select only the column with demand values and change it to 'demand_MW'
     # demand =  rename(loads, :demand => :demand_MW)
     demand.r_id .= missing
     demand.resource .= "system"
@@ -341,6 +341,7 @@ end
 function get_enriched_objective_value(enriched_solution, gen_df, storage, parameters)
     #TODO: deal with missing values
     function check()
+        @infiltrate
         aux = combine(groupby(cost, intersect([:scenario], propertynames(cost))), [:production_cost, :fixed_cost, :start_cost] .=> (x -> sum(skipmissing(x))), renamecols = false)
         sum_cost = mean(aux.production_cost.+.+aux.fixed_cost.+aux.start_cost)
         if !isapprox(enriched_solution[:scalar].OPEX[1], sum_cost; rtol =  parameters.MIPGap) # OPEX = production_cost + fixed_cost + start_cost
