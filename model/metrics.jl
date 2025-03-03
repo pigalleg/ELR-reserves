@@ -10,7 +10,7 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
         f_LOL(x, y) = (
             LLD_h = count(>(thres), x),
             ENS_MWh = sum(x),
-            input_load_MWh = sum(y) + sum(x) # input_load = production + LOL
+            input_load_MWh = sum(y) + sum(x) # input_load = production + LOL. Input demand can be different from input file because of capping for reserves
         )
         f_CUR(x, y) = (
             CURD_h = count(>(thres), x),
@@ -98,7 +98,6 @@ function calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by)
     out.objective_value = sum(eachcol(out[:,keys_objective_value]))
     # out.objective_value = select(out, keys_objective_value .=> ByRow(sum) => :objective_value)[:objective_value]
     # out.objective_value = out.OPEX .+ out.LOL_cost .+ out.LGEN_cost .+ out.reserve_cost # this objective value definition correspond to objective_function(model)
-
     if !isnothing(s_uc)
         group_by_uc = intersect([:configuration, :day], group_by)
         keys_objective_value_uc = intersect(keys_objective_value, propertynames(s_uc.objective_function))

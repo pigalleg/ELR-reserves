@@ -36,11 +36,10 @@ function get_multipliers(model)
 end
 
 # TODO change gen_variable => gen_varialbe_df, loads => loads_df
-function construct_economic_dispatch(uc, loads, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool, variables_to_constrain::Vector{Symbol}, VLOL::Union{Float64,Int64,Vector}, VLGEN::Union{Float64,Int64,Vector})
-    #TODO: remove loads from arguments
+function construct_economic_dispatch(uc, time, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool, variables_to_constrain::Vector{Symbol}, VLOL::Union{Float64,Int64,Vector}, VLGEN::Union{Float64,Int64,Vector})
     println("Constructing ED...")
     # Outputs EC by fixing variables of UC
-    T, __ = create_time_sets(loads)
+    T, __ = create_time_sets(time)
     VLOL = convert_to_indexed_vector(VLOL, T)
     VLGEN = convert_to_indexed_vector(VLGEN, T)
     # ed, reference_map = copy_model(uc)
@@ -464,7 +463,7 @@ function solve_economic_dispatch_get_solution(uc, gen_df, loads, gen_variable; k
     if constrain_SOE_by_envelopes
         variables_to_constrain = [GEN]
     end
-    ed = construct_economic_dispatch(uc, loads[!,[HOUR, DEMAND]], constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain, VLOL, VLGEN)
+    ed = construct_economic_dispatch(uc, loads[!,[HOUR]], constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain, VLOL, VLGEN)
     # save_model_to_file(ed,"ed")
     solutions = Dict()
     kwargs = Dict(kwargs)
