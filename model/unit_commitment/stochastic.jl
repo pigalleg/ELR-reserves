@@ -44,7 +44,7 @@ function SUC(gen_df, gen_variable, scenarios, mip_gap, VLOL = 10^4, VLGEN = 0)
     add_OPEX(model, gen_df, sets, scenarios, VLOL, VLGEN)
 
     @objective(model, Min,  #TODO: move at the end of the constructor
-        model[:OPEX]
+        model[:OPEX] + model[:penalizationCosts]
     )
     # Demand balance constraint (supply must = demand in all time periods)
     @expression(model, SupplyDemand[t in T, σ in Σ],
@@ -131,8 +131,13 @@ function add_OPEX(model, gen_df, sets, scenarios, VLOL, VLGEN)
     # )
 
     @expression(model, OPEX,
-        sum(prob[prob.scenario .== σ,:probability][1]*(model[:StartupFixedCost][σ] + model[:OperationalCost][σ] + model[:LOLCost][σ] + model[:LGENCost][σ]) for σ in Σ)
+        sum(prob[prob.scenario .== σ,:probability][1]*(model[:StartupFixedCost][σ] + model[:OperationalCost][σ]) for σ in Σ)
     )
+
+    @expression(model, penalizationCosts,
+        sum(prob[prob.scenario .== σ,:probability][1]*(model[:LOLCost][σ] + model[:LGENCost][σ]) for σ in Σ)
+    )
+
     @variable(model, VLOL[t in keys(VLOL)] in Parameter(VLOL[t])) # for post-processing purposes
     @variable(model, VLGEN[t in keys(VLGEN)] in Parameter(VLGEN[t])) # for post-processing purposes
 end
@@ -225,7 +230,7 @@ function add_storage_s(model, storage, scenarios, sets::NamedTuple, expected_min
         OPEX + sum(prob[prob.scenario .== σ,:probability][1]*model[:StorageOperationalCost][σ] for σ in Σ)
     )
     @objective(model, Min, #TODO: move towars the end
-        model[:OPEX]
+        model[:OPEX] + model[:penalizationCosts]
     )
     
     # Redefinition of supply-demand balance expression and constraint
