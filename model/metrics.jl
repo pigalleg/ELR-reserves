@@ -22,7 +22,7 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
         # - ATTENTION: net_generation is not included in RES that can be misleading as net_generation can mean RES
         RES_filter = in(["onshore_wind_turbine", "small_hydroelectric", "solar_photovoltaic", "net_generation"]).(s_ed.generation.resource)
         thermal_filter = in(["natural_gas_fired_combined_cycle", "natural_gas_fired_combustion_turbine",]).(s_ed.generation.resource)
-        nonRES_nonThermal_filter = .!RES_filter .& .thermal_filter  
+        nonRES_nonThermal_filter = .!RES_filter .& .!thermal_filter  
         # end TODO ##############################################################
         out = outerjoin(
             combine(groupby(s_ed.demand, group_by), [:LOL_MW, :demand_MW] => ((x, y) -> f_LOL(x, y)) => AsTable),
