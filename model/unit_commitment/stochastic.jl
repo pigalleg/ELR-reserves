@@ -59,6 +59,7 @@ function SUC(gen_df, gen_variable, scenarios, mip_gap, VLOL = 10^4, VLGEN = 0)
 
     constrain_to_deterministic(model, :GEN, G_thermal)
     constrain_to_deterministic(model, :GEN, sets.G_nt_nonvar)
+    constrain_to_deterministic(model, :GEN, sets.G_var)
     constrain_to_deterministic(model, :COMMIT)
     constrain_to_deterministic(model, :START)
     constrain_to_deterministic(model, :SHUT)
