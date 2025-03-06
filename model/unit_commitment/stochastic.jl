@@ -48,7 +48,7 @@ function SUC(gen_df, gen_variable, scenarios, mip_gap, VLOL = 10^4, VLGEN = 0)
     )
     # Demand balance constraint (supply must = demand in all time periods)
     @expression(model, SupplyDemand[t in T, σ in Σ],
-        sum(GEN[g,t,σ] for g in G) + + LOL[t,σ] - LGEN[t,σ]
+        sum(GEN[g,t,σ] for g in G) + LOL[t,σ] - LGEN[t,σ]
     )
     @constraint(model, SupplyDemandBalance[t in T, σ in Σ], 
         SupplyDemand[t,σ] == demand[demand.hour .== t,σ][1]
