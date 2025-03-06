@@ -358,6 +358,7 @@ function generate_suc_solutions(;days, kwargs...)
             :storage => storage_df,
             :VLGEN => get(kwargs, :VLGEN, 0),
             :get_dual_variables => get(kwargs, :get_dual_variables, false),
+            :mip_gap => get(kwargs, :mip_gap, 1e-8),
             )
         suc = solve_unit_commitment(
             gen_df,
