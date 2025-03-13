@@ -2,6 +2,7 @@ using DataFrames
 using Parquet2
 using MathOptInterface: TerminationStatusCode
 using Statistics
+include("../model/pre_processing.jl")
 order = [
   "solar_photovoltaic_curtailment",
   "onshore_wind_turbine_curtailment",
@@ -109,3 +110,28 @@ end
 
 parse_configuration_to_mu(x) = !isnothing(match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", string(x))) ? parse(Float64, replace(match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", string(x))[1], "_" => ".")) : 1
 
+function load_deterministic_data(day, input_folder, ε=nothing, ρ=nothing)
+  gen_df, loads_multi_df, gen_variable_multi_df, storage_df, random_loads_multi_df = generate_input_data(day, input_folder)
+  # required_reserve = generate_reserves(loads_multi_df, gen_variable_multi_df, reserve)
+  file = joinpath(input_folder, G_UC_DATA, "Reserve.csv")
+  if isfile(file)
+      println("Reserve file found, loading reserves...")                            
+      required_reserve = filter_day(day, CSV.read(file, DataFrame))
+  else
+      println("Reserve file not found, generating reserves...")
+      required_reserve = generate_reserves(loads_multi_df, gen_variable_multi_df, ε, ρ)
+  end
+  random_loads_multi_df = filter_demand(loads_multi_df, random_loads_multi_df, required_reserve)
+  return gen_df, loads_multi_df, random_loads_multi_df, gen_variable_multi_df, storage_df, required_reserve
+end
+
+function load_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, ε = nothing, ρ = nothing)
+  file = joinpath(input_folder, G_UC_DATA, "Energy reserve.csv")
+  if isfile(file)
+      println("Energy reserve file found, loading reserves...")
+      return filter_day(day, CSV.read(file, DataFrame))
+  else
+      println("Energy reserve file not found, generating reserves...")
+      return  generate_energy_reserves(loads_multi_df, gen_variable_multi_df, ε, ρ)
+  end
+end
