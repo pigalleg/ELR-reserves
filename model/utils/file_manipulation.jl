@@ -61,9 +61,9 @@ function update_final_energy_proportion(; kwargs...)
 end
 
 function main()
-    rhos = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99]
+    rhos = [0.5, 0.6, 0.7, 0.8, 0.9, 0.99]
     from_solutions = ["solutions_v57.$(r).4s" for r in rhos]
-    mus = [0.3, 0.3, 0.32, 0.32, 0.37, 0.38, 0.37, 0.49, 0.55, 0.65, 0.97]
+    mus = [0.38, 0.37, 0.49, 0.55, 0.65, 0.97]
     to_input = ["base_case_increased_storage_energy_v8.$(r).4" for r in rhos]
 
     for (x, y, z) in zip(from_solutions, mus, to_input)

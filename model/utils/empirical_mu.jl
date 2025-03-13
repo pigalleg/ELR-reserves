@@ -81,45 +81,6 @@ function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve
         θDNCH[s,t] <= RESDNCH[s,t] #meaning multiplier lower or equal to 1
     )
 
-    # Envelopes initial conditions
-  #  @constraint(model, SOEUP_0[s in S],
-  #      SOEUP[s,T_incr[1]] == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
-  #  )
-  #  @constraint(model, SOEDN_0[s in S],
-  #      SOEDN[s,T_incr[1]] == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
-  #  )
-
-    # Envelopes max and min 
-    # SOEUP, SOEDN <=SOE_max
-  #  @constraint(model, SOEUPMax[s in S, t in T],
-  #      SOEUP[s,t] <= storage[storage.r_id .== s,:max_energy_mwh][1]
-  #  )
-  #  @constraint(model, SOEDNMax[s in S, t in T],
-  #      SOEDN[s,t] <= storage[storage.r_id .== s,:max_energy_mwh][1]
-  #  )
-    # SOEUP, SOEDN>=SOE_min
-  #  @constraint(model, SOEUPMin[s in S, t in T],
-  #      SOEUP[s,t] >= storage[storage.r_id .== s,:min_energy_mwh][1]
-  #   )
-  #  @constraint(model, SOEDNMin[s in S, t in T],
-  #      SOEDN[s,t] >= storage[storage.r_id .== s,:min_energy_mwh][1]
-  #  )
-
-    # Envelopes time evolution
-   # @constraint(model, SOEUpEvol[s in S, t in T],
-  #      SOEUP[s,t]  == SOEUP[s,t-1] + RESDNCH[s,t]*ηch[s] + RESDNDIS[s,t]/ηdis[s]
-  #  ) 
-  #  @constraint(model, SOEDnEvol[s in S, t in T], 
-  #      SOEDN[s,t]  == SOEDN[s,t-1] - RESUPCH[s,t]*ηch[s] - RESUPDIS[s,t]/ηdis[s]
-  #  )
-
-    # @constraint(model, SOEUpEvol[s in S, t in T],
-    #     SOEUP[s,t]  == SOEUP[s,t-1] + θDNCH[s,t]*ηch[s] + θDNDIS[s,t]/ηdis[s]
-    # ) 
-    # @constraint(model, SOEDnEvol[s in S, t in T], 
-    #     SOEDN[s,t]  == SOEDN[s,t-1] - θUPCH[s,t]*ηch[s] - θUPDIS[s,t]/ηdis[s]
-    # )
-
 
     # Reserves addition
     @constraint(model, ResUpStorageCapacityMax[s in S, t in T],
@@ -135,45 +96,6 @@ function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve
     @constraint(model, ResDnRequirement[t in T],
         sum(RESDN[g,t] for g in S) == reserve[reserve.hour .== t,:reserve_down_MW][1]
     )
-
-    # E-envelopes initial conditions
-    # ESOEUP[T_initial,T_initial] = SOE[T_initial]
-  #  @constraint(model, ESOEUP_0[s in S, t in T_incr],
-  #      ESOEUP[s,T_incr[1],T_incr[1]] == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
-  #  )
-    # ESOEDN[T_initial,T_initial] = SOE[T_initial]
-  #  @constraint(model, ESOEDN_0[s in S, t in T_incr],
-  #      ESOEDN[s,T_incr[1], T_incr[1]] == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
-  #  )
-  #  @constraint(model, ESOEUPEvol_0[s in S, t in T],
-  #      ESOEUP[s,T_incr[1],t] == ESOEUP[s,T[1],t]
-  #  )
-  #  @constraint(model, ESOEDNEvol_0[s in S, t in T],
-  #      ESOEDN[s,T_incr[1],t] == ESOEDN[s,T[1],t]
-  #  )
-
-    # SOEUP, SOEDN <=SOE_max
- #   @constraint(model, ESOEUPMax[s in S, j in T, t in T; j <= t],
- #       ESOEUP[s,j,t] <= storage[storage.r_id .== s,:max_energy_mwh][1]
- #   )
-  #  @constraint(model, ESOEDNMax[s in S, j in T, t in T; j <= t],
- #       ESOEDN[s,j,t] <= storage[storage.r_id .== s,:max_energy_mwh][1]
- #   )
-  #  # SOEUP, SOEDN>=SOE_min
- #   @constraint(model, ESOEUPMin[s in S, j in T, t in T; j <= t],
-  #      ESOEUP[s,j,t] >= storage[storage.r_id .== s,:min_energy_mwh][1]
-  #  )
- #   @constraint(model, ESOEDNMin[s in S, j in T, t in T; j <= t],
- #       ESOEDN[s,j,t] >= storage[storage.r_id .== s,:min_energy_mwh][1]
- #   )
-
-    # e-envelopes evolution
-#    @constraint(model, ESOEUpEvol[s in S, j in T, t in T; j <= t],
- #       ESOEUP[s,j,t]  == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1] + ERESDNCH[s,j,t]*ηch[s] + ERESDNDIS[s,j,t]/ηdis[s]
-  #  )
- #   @constraint(model, ESOEDnEvol[s in S, j in T, t in T; j <= t], 
- #       ESOEDN[s,j,t]  == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1] - ERESUPCH[s,j,t]*ηch[s] - ERESUPDIS[s,j,t]/ηdis[s]
- #   )
 
     # e-reserve addition
     @constraint(model, EnergyResUpStorage[s in S, j in T, t in T; j <= t],
@@ -206,32 +128,6 @@ function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve
         MAXERESDNCH[s,t] >= ERESDNCH[s,j,t]
     )
 
-    # ATTENTION slack variables added to power constraints  
-#    @variables(model, begin
-#         sUPDIS[S, j in T, t in T; j <= t] >= 0  # slack variables
-#         sUPCH[S, j in T, t in T; j <= t] >= 0  
-#         sDNCH[S, j in T, t in T; j <= t] >= 0 
-#         sDNDIS[S, j in T, t in T; j <= t] >= 0
-#         # MAXsUPDIS[S,T] >= 0  # not used
-#         # MAXsUPCH[S,T] >= 0  # not used
-#         # MAXsDNCH[S,T] >= 0 # not used
-#         # MAXsDNDIS[S,T] >= 0# not used
-#    end)
-
-#    # ATTENTION  #auxiliary variable aims to find the 'worst' energy reserve impact from any starting time j to time t
-#     @constraint(model, slackUpDisMin[s in S, j in T, t in T; j <= t],
-#         MAXsUPDIS[s,t] >= sUPDIS[s,j,t]
-#     )
-#     @constraint(model, slackUpChMin[s in S, j in T, t in T; j <= t],
-#         MAXsUPCH[s,t] >= sUPCH[s,j,t]
-#     )
-#     @constraint(model, slackDnDisMin[s in S, j in T, t in T; j <= t],
-#         MAXsDNCH[s,t] >= sDNCH[s,j,t]
-#     )
-#     @constraint(model, slackDnChMin[s in S, j in T, t in T; j <= t],
-#         MAXsDNDIS[s,t] >= sDNDIS[s,j,t]
-#     )
-
 
     @constraint(model, EpsilonsDnChMin[s in S, t in T],
         εDNCH[s,t] == sum(θDNCH[s,j]*ηch[s] for j in T if j<=t) - (MAXERESDNCH[s,t])*ηch[s]  #this is deviation between output and maximum energy reserve impact
@@ -245,21 +141,6 @@ function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve
     @constraint(model, EpsilonsUpDisMin[s in S, t in T],
         εUPDIS[s,t] == sum(θUPDIS[s,j]/ηdis[s] for j in T if j<=t) - (MAXERESUPDIS[s,t])/ηdis[s]
     )
-    
-
-   # @constraint(model, EpsilonsDnChMinIneq[s in S, t in T],
-   #    sum(θDNCH[s,j]*ηch[s] for j in T if j<=t) >= MAXERESDNCH[s,t]
-   # )
-   # @constraint(model, EpsilonsDnDisMinIneq[s in S, t in T],
-   #     sum(θDNDIS[s,j]/ηdis[s] for j in T if j<=t) >= MAXERESDNDIS[s,t]
-   # )
-   # @constraint(model, EpsilonsUpChMinIneq[s in S, t in T],
-   #     sum(θUPCH[s,j]*ηch[s] for j in T if j<=t) >= MAXERESUPCH[s,t]
-   # )
-   # @constraint(model, EpsilonsUpDisMinIneq[s in S, t in T],
-   #     sum(θUPDIS[s,j]/ηdis[s] for j in T if j<=t) >= MAXERESUPDIS[s,t]
-   # )
-
     
 
 #  Power constraints 
@@ -293,9 +174,6 @@ function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve
     @expression(model, reserve,
        sum(ω[t]*(RESDNCH[s,t] + RESDNDIS[s,t] + RESUPCH[s,t] + RESUPDIS[s,t]) for s in S for t in T)
     )
-    # @expression(model, slack, # slacks removed
-    #    sum(sDNCH[s,j,t] + sDNDIS[s,j,t] + sUPCH[s,j,t] + sUPDIS[s,j,t] for s in S for t in T for j in T if j<=t)
-    # )
 
     @objective(model, Min,
         model[:epsilon_variance] + (model[:theta] - model[:reserve])# + model[:slack]

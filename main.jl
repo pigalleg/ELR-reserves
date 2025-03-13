@@ -254,7 +254,7 @@ function generate_post_processing_KPI_files(folder_path; stochastic = false, fol
 end
 
 function generate_ed_solutions(;days, kwargs...)
-    function generate_multipliers_configurations(μs) #  [(key = configuration_name, value = (up = [...], down = [...]))...]  # configuration name is for labeling purposes only
+    function generate_multipliers_configurations(μs) #   μs = [(μ_key = (up =::Vector, down=::Vector),)...]  # configuration name is for labeling purposes only
         mu_to_string(x) = isinteger(x) ? string(Int(x)) : replace(string(x), "." => "_")
         if isa(μs, NamedTuple) # if μs is a list of named tuples μs = [(μ_key = (up =::Vector, down=::Vector),)...]
             return [(key = Symbol("base_ramp_storage_envelopes_$(key)"), value = value) for (key, value) in pairs(μs)]
