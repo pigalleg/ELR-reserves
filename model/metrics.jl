@@ -30,7 +30,6 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
             ΔSOE.SOE_0_MWh .= unique(SOE_0.SOE_0_MWh)
             # leftjoin!(ΔSOE, SOE_0,on = intersect(group_by, propertynames(SOE_0)))
             ΔSOE.net_SOE_MWh = ΔSOE.SOE_T_MWh .- ΔSOE.SOE_0_MWh
-            @infiltrate
             return ΔSOE
         end
         # f_ΔSOE
