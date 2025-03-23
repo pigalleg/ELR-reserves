@@ -6,7 +6,8 @@ parse_configuration_to_mu(x) = !isnothing(match(r"base_ramp_storage_envelopes_up
 
 function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
     # if stochastic, s_ed = s_suc and s_uc = nothing
-    function calculate_basic_KPI(s_ed, group_by, thres = .001)
+    function calculate_basic_KPI(s_ed, group_by)
+        thres = 0.001
         f_LOL(x, y) = (
             LLD_h = count(>(thres), x),
             ENS_MWh = sum(x),
@@ -17,9 +18,24 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
             CUR_MWh = sum(x),
             input_RES_production_MWh = sum(y) + sum(x) # input_RES_production = RES_production + CUR
         )
-        f_ΔSOE
+        f_storage(x,y) = (
+            storage_charge_MWh = sum(skipmissing(x)),
+            storage_discharge_MWh = sum(skipmissing(y)),
+            storage_net_charge_MWh = sum(skipmissing(x))-sum(skipmissing(y))
+        )
+        function calculate_ΔSOE(s_ed)
+            s_ed_storage_last = s_ed.storage[s_ed.storage.hour .== maximum(s_ed.storage.hour), :]
+            SOE_0 = combine(groupby(s_ed.storage_parameters, intersect(group_by, propertynames(s_ed.storage_parameters))), [:initial_energy_proportion,:SOE_max_MWh] => ((x,y) -> sum(x.*y)) => :SOE_0_MWh)
+            ΔSOE = combine(groupby(s_ed_storage_last, group_by), :SOE_MWh => (x->sum(skipmissing(x))) => :SOE_T_MWh)
+            ΔSOE.SOE_0_MWh .= unique(SOE_0.SOE_0_MWh)
+            # leftjoin!(ΔSOE, SOE_0,on = intersect(group_by, propertynames(SOE_0)))
+            ΔSOE.net_SOE_MWh = ΔSOE.SOE_T_MWh .- ΔSOE.SOE_0_MWh
+            @infiltrate
+            return ΔSOE
+        end
+        # f_ΔSOE
         # begin TODO ##############################################################
-        # - Following filter could be automatically constructed with information that can be stored in s_ed.generation_parameters
+        # - Following filter could automatically be constructed with information that can be stored in s_ed.generation_parameters
         # - ATTENTION: net_generation is not included in RES. That can be misleading as net_generation here captures RES
         RES_filter = in(["onshore_wind_turbine", "small_hydroelectric", "solar_photovoltaic", "net_generation"]).(s_ed.generation.resource)
         thermal_filter = in(["natural_gas_fired_combined_cycle", "natural_gas_fired_combustion_turbine",]).(s_ed.generation.resource)
@@ -30,22 +46,26 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
             combine(groupby(s_ed.generation[RES_filter, :], group_by), [:curtailment_MW, :production_MW] => ((x, y) -> f_CUR(x, y)) => AsTable),
             combine(groupby(s_ed.generation[thermal_filter, :], group_by), :production_MW => sum => :thermal_production_MWh),
             combine(groupby(s_ed.generation[nonRES_nonThermal_filter, :], group_by), :production_MW => sum => :nonRES_nonThermal_production_MWh),
-            combine(groupby(s_ed.storage, group_by), :charge_MW => (x -> sum(skipmissing(x))) => :storage_charge_MWh), # s_ed storage has extra 'missing' values for each group_by because of :hour_i
-            combine(groupby(s_ed.storage, group_by), :discharge_MW => (x -> sum(skipmissing(x))) => :storage_discharge_MWh), # same as previous comment
+            combine(groupby(s_ed.storage, group_by), [:charge_MW,:discharge_MW] => ((x, y) -> f_storage(x, y)) => AsTable),
             on = group_by
         )
+        leftjoin!(out, calculate_ΔSOE(s_ed), on = group_by)
         if :LGEN_MW in propertynames(s_ed.demand)
             out = outerjoin(out, combine(groupby(s_ed.demand, group_by), :LGEN_MW => sum => :LGEN_MWh), on = group_by)
         end
         return out
     end
 
-    function calculate_dual_variables(s_ed, s_uc, group_by) #TODO: if isnothing(s_uc)
+    function calculate_basic_KPI_uc(s_uc, group_by) #TODO: move it to calculate_adecuacy_gcd_KPI()
+        return combine(groupby(s_uc.demand, group_by), :demand_MW => sum => :input_load_uc_MWh)  # For now we just need this parameter
+    end
+    
+    function calculate_dual_variables(s_ed, s_uc, group_by)
         function max_abs_value(x)
             idx = argmax(abs.(x))
             return x[idx]
         end
-        function calculate_uc_dual_variables(s_uc, group_by_uc)
+        function calculate_uc_dual_variables(s_uc, group_by_uc) #TODO: move it to calculate_adecuacy_gcd_KPI()
             keys_to_combine = Dict(
             :dual_supply_demand_balance_MU_MW => :avg_marginal_energy_price_uc_MU_MWh,
             :dual_reserve_up_requirement_MU_MW => :avg_marginal_reserve_up_price_uc_MU_MWh,
@@ -72,20 +92,31 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
     group_by = intersect([:configuration, :day, :iteration, :scenario], propertynames(s_ed.demand))
     gcdi_KPI = calculate_basic_KPI(s_ed, group_by)
     leftjoin!(gcdi_KPI, calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by), on = group_by)
+    
     if :dual_variables in keys(s_ed) && !isempty(s_ed[:dual_variables])
         leftjoin!(gcdi_KPI, calculate_dual_variables(s_ed, s_uc, group_by), on = group_by)
     end
+
+    if !isnothing(s_uc)
+        group_by_uc = intersect([:configuration, :day], group_by)
+        leftjoin!(gcdi_KPI, calculate_basic_KPI_uc(s_uc, group_by_uc), on = group_by_uc)
+    end
+
     if :configuration in propertynames(out)
         out = sort(transform(out, :configuration .=> ByRow(x -> parse_configuration_to_mu(x)) .=> :mu), :mu)
     end
+
     return gcdi_KPI
 end
+
 function calculate_adecuacy_gcd_KPI(gcdi_KPI)
+    # Metrics from scenarios are aggregated through the mean
     group_by = intersect([:configuration, :day], propertynames(gcdi_KPI))
     keys_to_combine = Dict(
         :LLD_h => :LOLE, :ENS_MWh => :EENS, :CURD_h => :CURE, :CUR_MWh => :ECUR, :LGEN_MWh => :ELGEN,
-        :input_load_MWh => :input_load_MWh, :input_RES_production_MWh => :input_RES_production_MWh, :thermal_production_MWh => :E_thermal_production_MWh,
-        :nonRES_nonThermal_production_MWh => :E_nonRES_nonThermal_production_MWh, :storage_charge_MWh => :E_storage_charge_MWh, :storage_discharge_MWh => :E_storage_discharge_MWh,
+        :input_load_MWh => :E_input_load_MWh, :input_RES_production_MWh => :E_input_RES_production_MWh, :thermal_production_MWh => :E_thermal_production_MWh,
+        :input_load_uc_MWh => :input_load_uc_MWh, # manually cheked that the average gives back the original value
+        :nonRES_nonThermal_production_MWh => :E_nonRES_nonThermal_production_MWh, :storage_charge_MWh => :E_storage_charge_MWh, :storage_discharge_MWh => :E_storage_discharge_MWh, :storage_net_charge_MWh => :E_storage_net_charge_MWh, :SOE_0_MWh => :SOE_0_MWh, :SOE_T_MWh => :E_SOE_T_MWh, :net_SOE_MWh => :E_net_SOE_MWh,
         :objective_value => :EOV, :objective_value_uc => :OV_uc, :OPEX => :EOPEX, :OPEX_uc => :OPEX_uc, :redispatch_cost => :E_redispatch_cost, :LOL_cost => :EENS_cost, :LGEN_cost => :ELGEN_cost, :reserve_cost => :E_reserve_cost, :reserve_cost_uc => :reserve_cost_uc,
         :start_cost => :E_start_cost, :fixed_cost => :E_fixed_cost, :production_cost => :E_production_cost, 
         :avg_marginal_energy_price_MU_MWh => :E_avg_marginal_energy_price_MU_MWh, :avg_marginal_energy_price_uc_MU_MWh => :avg_marginal_energy_price_uc_MU_MWh,
@@ -93,7 +124,6 @@ function calculate_adecuacy_gcd_KPI(gcdi_KPI)
         :avg_marginal_energy_reserve_up_price_uc_MU_MWh => :avg_marginal_energy_reserve_up_price_uc_MU_MWh, :avg_marginal_energy_reserve_down_price_uc_MU_MWh => :avg_marginal_energy_reserve_down_price_uc_MU_MWh
     )
     keys_to_combine = Dict(k => v for (k, v) in keys_to_combine if k in propertynames(gcdi_KPI))
-
     gcd_KPI = combine(groupby(gcdi_KPI, group_by), keys(keys_to_combine) .=> mean .=> values(keys_to_combine))
     if :configuration in propertynames(gcd_KPI)
         gcd_KPI = sort(transform(gcd_KPI, :configuration .=> ByRow(x -> parse_configuration_to_mu(x)) .=> :mu), :mu)

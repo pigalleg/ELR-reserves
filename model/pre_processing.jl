@@ -7,8 +7,6 @@ G_DEFAULT_LOCATION = "./input/base_case"
 G_NET_GENERAION_FULL_ID = "net_generation"
 G_UC_DATA = "uc"
 
-
-
 # --- start pre_processing ---
 
 function variance(σ, ρ)
