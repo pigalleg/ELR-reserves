@@ -226,11 +226,9 @@ function get_enriched_duals(solution)
         # )
         # aux = sort(aux, :hour)
     end
-    
     if :hour_i in propertynames(aux) # this is the case of energy reserve duals
         select!(aux, vcat([:hour, :hour_i], setdiff(Symbol.(names(aux)), [:hour, :hour_i]))) # reordering with :hour and :hour_i first
     end
-    @infiltrate
     return aux
 end
     
