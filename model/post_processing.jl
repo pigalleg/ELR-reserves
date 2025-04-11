@@ -439,10 +439,13 @@ function solution_to_parquet(s, file_name, file_folder)
     println("...done")
   end
 
-function parquet_to_solution(file_name, file_folder)
+function parquet_to_solution(file_name, file_folder, solution_keys=nothing)
     # TODO 1 convert to TerminationStatusCode
     # TODO 2 move to post_processing
-    keys = [k for k in SOLUTION_KEYS if isfile(joinpath(file_folder, file_name*"_"*string(k)*".parquet"))]
+    if isnothing(solution_keys)
+        solution_keys = SOLUTION_KEYS
+    end
+    keys = [k for k in solution_keys if isfile(joinpath(file_folder, file_name*"_"*string(k)*".parquet"))]
     println("reading...")
     aux = [read_parquet_and_convert(joinpath(file_folder, file_name*"_"*string(k)*".parquet")) for k in keys]
     println("...done")
