@@ -101,7 +101,7 @@ function get_solution_variables(model, stochastic)
 end
 
 function get_solution_dual_variables(model, stochastic) # output's keys are of the format "$(constraint_name_)_dual"
-    constraints_to_get = [:SupplyDemandBalance, :ResUpRequirement, :ResDnRequirement, :EnergyResUpRequirement, :EnergyResDnRequirement] #TODO: :SOEFinalUp, :SOEFinalDn
+    constraints_to_get = [:SupplyDemandBalance, :ResUpRequirement, :ResDnRequirement, :EnergyResUpRequirement, :EnergyResDnRequirement, :SOEUPMax, :SOEDNMax, :SOEUPMin, :SOEDNMin, :ESOEUPMax, :ESOEDNMax, :ESOEUPMin, :ESOEDNMin] #TODO: :SOEFinalUp, :SOEFinalDn
     if has_duals(model)
         return NamedTuple(Symbol("$(string(k))_dual") => value_to_df(dual.(model[k]), stochastic) for k in intersect(keys(object_dictionary(model)), constraints_to_get))
     else
@@ -170,16 +170,17 @@ function enrich_dfs(solution, gen_df, loads, gen_variable, storage, parameters, 
     return NamedTuple(out)
 end
 
+
+
 function get_enriched_duals(solution)
     aux = rename(solution.SupplyDemandBalance_dual, :value => :dual_supply_demand_balance_MU_MW)
     if haskey(solution, :ResUpRequirement_dual) # UC+ED. we assume that ResDnRequirement_dual is present
         aux = innerjoin(aux,
         rename(solution.ResUpRequirement_dual, :value => :dual_reserve_up_requirement_MU_MW),
         rename(solution.ResDnRequirement_dual, :value => :dual_reserve_down_requirement_MU_MW),
-        
         on = :hour,
         )
-    elseif haskey(solution, :EnergyResUpRequirement_dual) # UC. We assume that EnergyResUpRequirement_dual is present
+    elseif haskey(solution, :EnergyResUpRequirement_dual) && haskey(solution, :EnergyResDnRequirement_dual) # UC. 
         aux = leftjoin(
             aux,
             innerjoin(
@@ -188,7 +189,30 @@ function get_enriched_duals(solution)
                 on = [:hour, :hour_i]),
             on = :hour, # value with :hour_i will be repeated
         )
-        select!(aux, vcat([:hour, :hour_i], setdiff(Symbol.(names(aux)), [:hour, :hour_i])))
+    end
+    if haskey(solution, :SOEUPMax_dual) && haskey(solution, :SOEDNMax_dual) && haskey(solution, :SOEUPMin_dual) && haskey(solution, :SOEDNMin_dual)
+        aux = leftjoin(
+            aux,
+            innerjoin(
+                rename(solution.SOEUPMax_dual, :value => :dual_SOE_up_max_MU_MW),
+                rename(solution.SOEDNMax_dual, :value => :dual_SOE_down_max_MU_MW),
+                rename(solution.SOEUPMin_dual, :value => :dual_SOE_up_min_MU_MW),
+                rename(solution.SOEDNMin_dual, :value => :dual_SOE_down_min_MU_MW),
+                on = [:r_id, :hour]),
+            on = [:hour]
+        )
+    end
+    if haskey(solution, :ESOEUPMax_dual) && haskey(solution, :ESOEDNMax_dual) && haskey(solution, :ESOEUPMin_dual) && haskey(solution, :ESOEDNMin_dual)
+        aux = leftjoin(
+            aux,
+            innerjoin(
+                rename(solution.ESOEUPMax_dual, :value => :dual_ESOE_up_max_MU_MW),
+                rename(solution.ESOEDNMax_dual, :value => :dual_ESOE_down_max_MU_MW),
+                rename(solution.ESOEUPMin_dual, :value => :dual_ESOE_up_min_MU_MW),
+                rename(solution.ESOEDNMin_dual, :value => :dual_ESOE_down_min_MU_MW),
+                on = [:r_id, :hour, :hour_i]),
+            on = [:hour, :hour_i]
+        )
     end
     if haskey(solution, :SOEFinalUp_dual) # ED. We assume that SOEFinalDn_dual is present
         # TODO: implement commented code. The problem right now is how to merge with aux, since aux do not have a r_id field
@@ -202,9 +226,14 @@ function get_enriched_duals(solution)
         # )
         # aux = sort(aux, :hour)
     end
+    
+    if :hour_i in propertynames(aux) # this is the case of energy reserve duals
+        select!(aux, vcat([:hour, :hour_i], setdiff(Symbol.(names(aux)), [:hour, :hour_i]))) # reordering with :hour and :hour_i first
+    end
+    @infiltrate
     return aux
-
 end
+    
 
 function get_enriched_energy_reserve(solution, data)
     return leftjoin(
