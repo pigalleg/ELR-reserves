@@ -3,6 +3,5 @@
 git-filter-repo.py 
 *large_file.csv
 *ignore*
-input/base_case_v1
-input/base_case_v1.2
-input/changelog.xlsx 
+input/*
+output/*
