@@ -113,7 +113,7 @@ function load_scenarios(day, input_folder, loads_multi_df, required_reserve)
     return scenarios
 end
 
-function duc(input_folder, day; kwargs...)
+function duc(;input_folder, day, kwargs...)
     # input_folder = get(kwargs, :input_folder, G_input_folder)
     # day = get(kwargs, :day, G_day)
     gen_df, loads_multi_df, random_loads_multi_df, gen_variable_multi_df, storage_df, required_reserve = load_deterministic_data(day, input_folder, G_ε, G_ρ)

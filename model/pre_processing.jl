@@ -93,20 +93,25 @@ end
 
 function pre_process_generators_data(gen_info,  fuels)
   # Keep columns relevant to our UC model
-  select!(gen_info, 1:28) # columns 1:26
+  columns_to_keep = [:r_id, :full_id, :region, :resource, :cluster, :existing_cap_mw, :min_power, :var_om_cost_per_mwh, :fixed_om_cost_per_mw_per_hour, :start_cost_per_mw, :heat_rate_mmbtu_per_mwh, :fuel, :up_time, :down_time, :ramp_up_percentage, :ramp_dn_percentage, :is_variable]
+  select!(gen_info, intersect(columns_to_keep, propertynames(gen_info)))
+  # remove generators with no capacity (e.g. new build options that we'd use if this was capacity expansion problem) 
   gen_df = outerjoin(gen_info,  fuels, on = :fuel) # load in fuel costs and add to data frame
   rename!(gen_df, :cost_per_mmbtu => :fuel_cost)   # rename column for fuel cost
   gen_df.fuel_cost[ismissing.(gen_df[:,:fuel_cost])] .= 0
 
   # create "is_variable" column to indicate if this is a variable generation source (e.g. wind, solar):
-  gen_df[!, :is_variable] .= false
-  gen_df[in(["onshore_wind_turbine","small_hydroelectric","solar_photovoltaic", "net_generation"]).(gen_df.resource),
-      :is_variable] .= true;
+  if !(:is_variable in propertynames(gen_df))
+    gen_df[!, :is_variable] .= false
+    gen_df[in(["onshore_wind_turbine","small_hydroelectric","solar_photovoltaic", "net_generation"]).(gen_df.resource),:is_variable] .= true;
+  end
 
   # create full name of generator (including geographic location and cluster number)
   #  for use with variable generation dataframe
-  gen_df.full_id = lowercase.(gen_df.region .* "_" .* gen_df.resource .* "_" .* string.(gen_df.cluster) .* ".0");
-
+  if !(:full_id in propertynames(gen_df))
+    gen_df.full_id = gen_df.region .* "_" .* gen_df.resource .* "_" .* string.(gen_df.cluster) .* ".0"
+  end
+  gen_df.full_id = lowercase.(gen_df.full_id)
   # remove generators with no capacity (e.g. new build options that we'd use if this was capacity expansion problem)
   gen_df = gen_df[gen_df.existing_cap_mw .> 0,:]
 
@@ -117,8 +122,9 @@ function pre_process_generators_data(gen_info,  fuels)
     gen_df[last_, k] = ifelse(gen_df[last_, k] isa AbstractString, "", 0.0)
   end
   gen_df[last_, :r_id] = maximum(gen_df.r_id) + 1
-  gen_df[last_, :resource] = G_NET_GENERAION_FULL_ID
-  gen_df[last_, :full_id] = G_NET_GENERAION_FULL_ID
+  gen_df[!, :resource] = String.(gen_df[!, :resource]) # Ensure the column is of type String
+  gen_df[last_, :resource] = G_NET_GENERAION_FULL_ID 
+  gen_df[last_, :full_id] = G_NET_GENERAION_FULL_ID 
   gen_df[last_, :existing_cap_mw] = 0
   gen_df[last_, :var_om_cost_per_mwh] = 0
   gen_df[last_, :is_variable] = true
@@ -130,7 +136,12 @@ end
 
 function pre_process_storage_data(storage_info)
   df = copy(storage_info)
-  df.full_id = lowercase.(storage_info.region .* "_" .* storage_info.resource .* "_" .* string.(storage_info.cluster) .* ".0");
+  if !(:full_id in propertynames(df))
+    # create full name of generator (including geographic location and cluster number)
+    #  for use with variable generation dataframe
+    df.full_id = df.region .* "_" .* df.resource .* "_" .* string.(df.cluster) .* ".0"
+  end 
+  df.full_id = lowercase.(df.full_id)
   return df
 end
 
@@ -165,7 +176,8 @@ end
 
 function pre_process_gen_variable(gen_df, gen_variable_info)
   gen_variable_info[!,G_NET_GENERAION_FULL_ID] .= 0 # net generation = -net_load for net_load < 0
-  aux = stack(gen_variable_info, Not(:hour), variable_name=:full_id, value_name=:cf)
+  select_ = :day in propertynames(gen_variable_info) ? [:hour,:day] : [:hour]
+  aux = stack(gen_variable_info, Not(select_), variable_name=:full_id, value_name=:cf)
   return innerjoin(aux,
     gen_df[gen_df.is_variable .== 1,[:r_id, :full_id, :existing_cap_mw]],
     on = :full_id)
