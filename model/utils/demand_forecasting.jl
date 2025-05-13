@@ -28,15 +28,17 @@ end
 function generate_reserve_file(input_location)
   println("Generating reserve file")  
   random_load = CSV.read(joinpath(input_location, "ed", "random_demand.csv"), DataFrame)
+  forecasted_load = CSV.read(joinpath(input_location, "uc", "Demand.csv"), DataFrame)
   p = 0.975
-  create_reserve(random_load, p, input_location)
+  create_reserve(random_load, forecasted_load, p, input_location)
 end
 
 function generate_energy_reserve_file(input_location)
   println("Generating energy reserve file")
   random_load = CSV.read(joinpath(input_location, "ed", "random_demand.csv"), DataFrame)
+  forecasted_load = CSV.read(joinpath(input_location, "uc", "Demand.csv"), DataFrame)
   p = 0.975
-  create_energy_reserve(random_load, p, input_location)
+  create_energy_reserve(random_load, forecasted_load, p, input_location)
 end
 
 
@@ -66,10 +68,9 @@ function create_autocorrelated_errors(d, ρ, p; n_errors = 1000)
   return errors
 end
 
-function create_reserve(random_loads, p, output_location = nothing) 
+function create_reserve(random_loads, forecasted_load, p, output_location = nothing) 
   select_ = :day in propertynames(random_loads) ? [:hour,:day] : [:hour]
-  errors = transform(random_loads, Not(select_) .=> (x -> x.- random_loads.demand), renamecols = false)
-  select!(errors, Not(:demand))
+  errors = transform(random_loads, Not(select_) .=> (x -> x.- forecasted_load.demand), renamecols = false)
   errors = stack(errors, Not(select_))
   grouped = groupby(errors, select_)
   reserve = combine(grouped,
@@ -85,7 +86,7 @@ function create_reserve(random_loads, p, output_location = nothing)
   CSV.write(output_file, reserve)
 end
 
-function create_energy_reserve(random_loads, p, output_location = nothing)
+function create_energy_reserve(random_loads, forecasted_load, p, output_location = nothing)
 # random loads: rows scenarios and columns hours of the day  
   # It needs :day in random_loads
   # tuples_ij(hour) = [(i_hour = i, t_hour = t) for i in hour, t in hour if i<=t] 
@@ -153,9 +154,8 @@ function create_energy_reserve(random_loads, p, output_location = nothing)
     )) => [:i_hour, :t_hour, :reserve_up_MW, :reserve_down_MW])
     return df
   end
-
-  errors = transform(random_loads, Not([:hour,:day]) .=> (x -> x.- random_loads.demand), renamecols = false)
-  select!(errors, Not(:demand))
+  select_ = :day in propertynames(random_loads) ? [:hour,:day] : [:hour]
+  errors = transform(random_loads, Not(select_) .=> (x -> x.- forecasted_load.demand), renamecols = false)
   energy_reserve = combine(groupby(errors, [:day]), AsTable(:) => (x -> [aux_(i, DataFrame(x), p) for i in x.hour]) => AsTable)
   energy_reserve = combine(groupby(energy_reserve, [:day]), Not(:day) .=> (x -> reduce(vcat,x)),  renamecols = false)
   energy_reserve = combine(groupby(energy_reserve, [:day]), AsTable(:) => (x->limit_to_cumulative_sum(DataFrame(x))) => AsTable)
