@@ -26,8 +26,13 @@ color_map=Dict(
     "Hydro RoR" => "cornflowerblue",
     "Solar" => "gold",
     "Battery" => "rgb(136,34,85)",
-    
-
+    "CSP" => "gold",
+    "HYDRO" => "darkblue",
+    "ROR" => "cornflowerblue",
+    "CC" => "grey",
+    "CT" => "black",
+    "STEAM" => "rgba(36, 121, 108, 1)",
+    "NUCLEAR" => "rgba(95, 70, 144, 1)",
 )
 
 color_discrete_map = (key) -> if haskey(color_map, key) color_map[key] else "red" end
