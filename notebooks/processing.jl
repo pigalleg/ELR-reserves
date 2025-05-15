@@ -3,7 +3,7 @@ using Parquet2
 using MathOptInterface: TerminationStatusCode
 using Statistics
 include("../model/pre_processing.jl")
-order = [
+order_ = [
   "solar_photovoltaic_curtailment",
   "onshore_wind_turbine_curtailment",
   "small_hydroelectric_curtailment",
@@ -12,8 +12,17 @@ order = [
   "total_loss_of_generation_ED",
   "net_generation_curtailment",
   "battery",
-  "solar_photovoltaic",
   "net_generation",
+  
+  "CSP",
+  "CC", 
+  "CT",
+  "STEAM", 
+  "ROR", "HYDRO",
+  "NUCLEAR",
+  
+
+  "solar_photovoltaic",
   "natural_gas_fired_combustion_turbine",
   "natural_gas_fired_combined_cycle",
   "onshore_wind_turbine",
@@ -29,10 +38,10 @@ G_NET_GENERAION_FULL_ID = "net_generation"
 
 function order_df(df_)
   df = copy(df_)
-  df[!, :order] = indexin(df[!,:resource], order)
-  replace!(df[!,:order], nothing =>length(order))
-  sort!(df, :order, rev = true)
-  return select(df, Not(:order))
+  df[!, :order_] = indexin(df[!,:resource], order_)
+  replace!(df[!,:order_], nothing =>length(order_))
+  sort!(df, :order_, rev = true)
+  return select(df, Not(:order_))
 end
 
 

@@ -68,6 +68,14 @@ function create_autocorrelated_errors(d, ρ, p; n_errors = 1000)
   return errors
 end
 
+function set_negative_values_to_zero!(df, col)
+  # Set negative values to zero in the specified column of the DataFrame
+  if any(df[!, col] .< 0)
+    println("Warning: Negative values found in $col. Replacing them with zero.")
+  end 
+  df[!, col] = max.(df[!, col], 0)
+end
+
 function create_reserve(random_loads, forecasted_load, p, output_location = nothing) 
   select_ = :day in propertynames(random_loads) ? [:hour,:day] : [:hour]
   errors = transform(random_loads, Not(select_) .=> (x -> x.- forecasted_load.demand), renamecols = false)
@@ -77,11 +85,14 @@ function create_reserve(random_loads, forecasted_load, p, output_location = noth
     :value => (x -> quantile(x,p)) => :reserve_up_MW,
     :value => (x -> -quantile(x,1-p)) => :reserve_down_MW,
     )
+  set_negative_values_to_zero!(reserve, :reserve_up_MW)
+  set_negative_values_to_zero!(reserve, :reserve_down_MW)
+
   if !isnothing(output_location)
     output_file = joinpath(output_location, "uc", "Reserve.csv")
   else  
     output_file = "Reserve.csv"
-  end 
+  end
   println("Saving reserve file at $output_file")
   CSV.write(output_file, reserve)
 end
@@ -159,6 +170,9 @@ function create_energy_reserve(random_loads, forecasted_load, p, output_location
   energy_reserve = combine(groupby(errors, [:day]), AsTable(:) => (x -> [aux_(i, DataFrame(x), p) for i in x.hour]) => AsTable)
   energy_reserve = combine(groupby(energy_reserve, [:day]), Not(:day) .=> (x -> reduce(vcat,x)),  renamecols = false)
   energy_reserve = combine(groupby(energy_reserve, [:day]), AsTable(:) => (x->limit_to_cumulative_sum(DataFrame(x))) => AsTable)
+  set_negative_values_to_zero!(energy_reserve, :reserve_up_MW)
+  set_negative_values_to_zero!(energy_reserve, :reserve_down_MW)
+
   if !isnothing(output_location)
     output_file = joinpath(output_location, "uc", "Energy reserve.csv")
   else  
