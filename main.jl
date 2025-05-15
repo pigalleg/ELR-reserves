@@ -5,6 +5,7 @@ include("./model/metrics.jl")
 include("./model/unit_commitment/unit_commitment.jl")
 include("./model/economic_dispatch.jl")
 include("./notebooks/plotting.jl")
+include("./notebooks/processing.jl")
 
 # __revise_mode__ = :eval
 # ENV["COLUMNS"]=120 # Set so all columns of DataFrames and Matrices are displayed
@@ -405,6 +406,6 @@ function run()
     end
 end
 
-# m_duc, s_duc, required_reserve = duc("./input/base_case_increased_storage_energy_v7.0.8.1", 7)
-# println(s_duc.dual_variables)
+# m_duc, s_duc, required_reserve = duc(input_folder = "./input/RTS-GMLC_v1.0", day = 7, storage_max_energy_factor = 1, storage_max_cap_factor = 1)
+# # println(s_duc.dual_variables)
 # plot_results(s_duc,required_reserve)
