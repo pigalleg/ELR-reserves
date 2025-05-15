@@ -1,6 +1,8 @@
 using JuMP
 using Gurobi
 include("../unit_commitment/utils.jl")
+include("../pre_processing.jl")
+
 function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve, temportal_weights, mip_gap = 1e-6)
     model = Model(Gurobi.Optimizer)
     set_optimizer_attribute(model, "MIPGap", mip_gap)
@@ -212,5 +214,38 @@ function solve_empirical_µ_get_solution(gen_df, loads, storage, required_reserv
     out_left = reduce((df1, df2) -> outerjoin(df1, df2, on = [:r_id, :t]), out_rest)
     out_right = reduce((df1, df2) -> outerjoin(df1, df2, on = [:r_id, :i, :t]), out_with_headers_i)
     return model, out_left, out_right
+
+end
+
+function calculate_mu_t(sol_1_)
+    sol_1 = dropmissing(sol_1_)
+    mu = DataFrame()
+    for (θ, RES) in [(:θUPDIS, :RESUPDIS), (:θUPCH, :RESUPCH), (:θDNDIS, :RESDNDIS), (:θDNCH, :RESDNCH)]
+        # mu[!, Symbol("$θ/$RES")] = cumsum(sol_1[:, θ]) ./ cumsum(sol_1[:, RES]) # comment this to get cumulative ratio
+        mu[!, Symbol("$θ/$RES")] = (sol_1[:, θ]) ./ (sol_1[:, RES])
+    end
+    mu = insertcols(mu, 1, :t => sol_1.t)
+    mu = mu[1:end, :]
+    leftjoin!(sol_1, mu, on = :t)
+    return coalesce.(mu, 0.0)
+    # return unstack(stack(mu, Not(:t), variable_name=:mu),:t, :value)
+end
+
+function main(input_folder = "../../input/RTS-GMLC_v1.0") # This function has been checked that yelds the right values
+    days = range(1,7)
+    temportal_weights = false
+    mu_t_all = DataFrame()
+    for day in days
+        gen_df, loads_multi_df, gen_variable_multi_df, storage_df, random_loads_multi_df = generate_input_data(day, input_folder)
+        required_reserve = filter_day(day, CSV.read(joinpath(input_folder, G_UC_DATA, "Reserve.csv"), DataFrame))
+        required_energy_reserve =  filter_day(day, CSV.read(joinpath(input_folder, G_UC_DATA, "Energy reserve.csv"), DataFrame))
+        model, sol_1, sol_2 = solve_empirical_µ_get_solution(gen_df, loads_multi_df, storage_df, required_reserve, required_energy_reserve; temportal_weights = temportal_weights)
+        mu_t = calculate_mu_t(sol_1)
+        # mu_t = insertcols(mu_t, 1, :rho => rho)
+        mu_t = insertcols(mu_t, 1, :day => day)
+        append!(mu_t_all, mu_t)
+    end
+    mu_t_all = insertcols(mu_t_all, 1, :input_folder => split(input_folder, "input/")[end])
+    CSV.write("empirical_mu.csv", mu_t_all)
 
 end
