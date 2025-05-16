@@ -33,11 +33,11 @@ function to_GMT(df) # deprecated
 end
 
 function generate_input_data(simulation_day, input_location = G_DEFAULT_LOCATION)
-  gen_info, fuels, loads_df, gen_variable_info, storage_info = read_data(input_location)
+  gen_info, fuels, loads_df, gen_variable_info, storage_info, storage_final_energy = read_data(input_location)
   # gen_info, fuels, loads_df, gen_variable_info, storage_info = read_data()
   gen_df = pre_process_generators_data(gen_info, fuels)
   gen_df, loads_df, gen_variable_df  = pre_process_load_gen_variable(gen_df, loads_df, pre_process_gen_variable(gen_df, gen_variable_info))
-  storage_df = pre_process_storage_data(storage_info)
+  storage_df = pre_process_storage_data(storage_info, simulation_day, storage_final_energy)
   random_loads_df = read_random_demand(input_location)
   if !isnothing(simulation_day)
     return gen_df, 
@@ -79,16 +79,22 @@ function read_data(input_location = G_DEFAULT_LOCATION; shift_timezone = false)
   loads = CSV.read(joinpath(input_uc_data_location,"Demand.csv"), DataFrame)
   gen_variable = CSV.read(joinpath(input_uc_data_location,"Generators_variability.csv"), DataFrame)
   storage_info = CSV.read(joinpath(input_uc_data_location,"Storage_data.csv"), DataFrame)
-
+  storage_final_energy_path = joinpath(input_uc_data_location, "Storage_final_energy.csv")
+  storage_final_energy = isfile(storage_final_energy_path) ? CSV.read(storage_final_energy_path, DataFrame) : nothing
+  # storage_final_energy = CSV.read(joinpath(input_uc_data_location,"Storage_final_energy.csv"), DataFrame)
   # rename all columns to lowercase (by convention)
-  for f in [gen_info, fuels, loads, gen_variable, storage_info]
+  files_to_lowercase = [gen_info, fuels, loads, gen_variable, storage_info]
+  if storage_final_energy !== nothing
+    push!(files_to_lowercase, storage_final_energy)
+  end
+  for f in files_to_lowercase
       rename!(f,lowercase.(names(f)))
   end
   if shift_timezone
     to_GMT(gen_variable)
     to_GMT(loads)
   end
-  return gen_info, fuels, loads, identity.(gen_variable), storage_info
+  return gen_info, fuels, loads, identity.(gen_variable), storage_info, storage_final_energy
 end
 
 function pre_process_generators_data(gen_info,  fuels)
@@ -134,7 +140,7 @@ function pre_process_generators_data(gen_info,  fuels)
   return identity.(gen_df)
 end
 
-function pre_process_storage_data(storage_info)
+function pre_process_storage_data(storage_info, simulation_day, storage_final_energy)
   df = copy(storage_info)
   if !(:full_id in propertynames(df))
     # create full name of generator (including geographic location and cluster number)
@@ -142,6 +148,11 @@ function pre_process_storage_data(storage_info)
     df.full_id = df.region .* "_" .* df.resource .* "_" .* string.(df.cluster) .* ".0"
   end 
   df.full_id = lowercase.(df.full_id)
+  if !isnothing(storage_final_energy) && simulation_day in storage_final_energy.day
+    SOE_last = storage_final_energy[storage_final_energy.day .== simulation_day,[:r_id, :final_energy_proportion]]
+    df = select(df, Not(intersect(propertynames(df), [:final_energy_proportion]))) # discard :final_energy_proportion if present
+    df = leftjoin(df, SOE_last, on = :r_id)
+  end
   return df
 end
 
