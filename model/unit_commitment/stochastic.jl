@@ -56,8 +56,7 @@ function SUC(gen_df, gen_variable, scenarios, mip_gap, VLOL = 10^4, VLGEN = 0)
 
     add_capacity_constraints(model, gen_df, gen_variable, sets)
     add_commitment_logic(model, gen_df, sets)
-
-    constrain_to_deterministic(model, :GEN, G_thermal)
+    constrain_to_deterministic(model, :GEN, G_thermal) 
     constrain_to_deterministic(model, :GEN, sets.G_nt_nonvar)
     constrain_to_deterministic(model, :GEN, sets.G_var)
     constrain_to_deterministic(model, :COMMIT)
@@ -66,11 +65,13 @@ function SUC(gen_df, gen_variable, scenarios, mip_gap, VLOL = 10^4, VLGEN = 0)
     return model
 end
 
-function constrain_to_deterministic(model, var_symbol, GG = nothing)
+function constrain_to_deterministic(model, var_symbol, GG = nothing)  
     var = model[var_symbol]
     if isnothing(GG)
         GG = axes(var)[1]
         subset = ""
+    elseif isempty(GG)
+        return
     else
         subset = "$(minimum(GG))_to_$(maximum(GG))_"
     end
