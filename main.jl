@@ -369,8 +369,8 @@ function generate_suc_solutions(;days, kwargs...)
             expected_min_SOE = expected_min_SOE,
             config...
             )
-        s_suc =  get_model_solution(suc, gen_df, gen_variable_multi_df; scenarios = scenarios, config...)
-        # merge_solutions(s_suc, [:day])
+        s_suc =  Dict(day => get_model_solution(suc, gen_df, gen_variable_multi_df; scenarios = scenarios, config...)) # creation of this dictionary is needed for merge_solutions
+        s_suc = merge_solutions(s_suc, [:day])
         if write
             if !isdir(output_folder) mkpath(output_folder) end
             folder_path = joinpath(output_folder,"n_$(join(day,"-"))")
@@ -380,10 +380,13 @@ function generate_suc_solutions(;days, kwargs...)
     write = get(kwargs, :write, true)
     expected_min_SOE = get(kwargs, :expected_min_SOE, false)    
     folders = get(kwargs, :folders, [(get(kwargs, :input_folder, nothing), get(kwargs, :output_folder, nothing))])
-    for (input_folder, output_folder) in folders, day in days
-        generate_suc_solutions_(day, input_folder, output_folder; kwargs...)
+    for (input_folder, output_folder) in folders
+        for day in days
+            generate_suc_solutions_(day, input_folder, output_folder; kwargs...)
+        end
         generate_post_processing_KPI_files(output_folder, stochastic = true)
-    end 
+    end
+
 end
 
 function run()
