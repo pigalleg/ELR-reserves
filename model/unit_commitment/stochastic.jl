@@ -58,7 +58,7 @@ function SUC(gen_df, gen_variable, scenarios, mip_gap, VLOL = 10^4, VLGEN = 0)
     add_commitment_logic(model, gen_df, sets)
     constrain_to_deterministic(model, :GEN, G_thermal) 
     constrain_to_deterministic(model, :GEN, sets.G_nt_nonvar)
-    constrain_to_deterministic(model, :GEN, sets.G_var)
+    # constrain_to_deterministic(model, :GEN, sets.G_var) # No need to make it deterministic as this is done already on gen_variable
     constrain_to_deterministic(model, :COMMIT)
     constrain_to_deterministic(model, :START)
     constrain_to_deterministic(model, :SHUT)
@@ -164,9 +164,9 @@ function add_capacity_constraints(model, gen_df, gen_variable, sets)
     )
     # 3. variable generation, accounting for hourly capacity factor
     # TODO: The way this constraint is declared does not follow general style
-    # Needs to be redefined at each ED
-    @constraint(model, Cap_var[g in 1:nrow(gen_variable), σ in Σ], 
-            GEN[gen_variable[g,:r_id], gen_variable[g,:hour], σ] <= 
+    @infiltrate
+    @constraint(model, Cap_var[g in 1:nrow(gen_variable)], 
+            GEN[gen_variable[g,:r_id], gen_variable[g,:hour], gen_variable[g,:scenario]] <= 
                         gen_variable[g,:cf] *
                         gen_variable[g,:existing_cap_mw]
                     )

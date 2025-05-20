@@ -120,7 +120,7 @@ end
 parse_configuration_to_mu(x) = !isnothing(match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", string(x))) ? parse(Float64, replace(match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", string(x))[1], "_" => ".")) : 1
 
 function load_deterministic_data(day, input_folder, ε=nothing, ρ=nothing)
-  gen_df, loads_multi_df, gen_variable_multi_df, storage_df, random_loads_multi_df = generate_input_data(day, input_folder)
+  gen_df, loads_multi_df, gen_variable_multi_df, storage_df, random_loads_multi_df = generate_deterministic_input_data(day, input_folder)
   # required_reserve = generate_reserves(loads_multi_df, gen_variable_multi_df, reserve)
   file = joinpath(input_folder, G_UC_DATA, "Reserve.csv")
   if isfile(file)

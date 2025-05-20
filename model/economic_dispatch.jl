@@ -4,7 +4,7 @@ using DataFrames
 # using Revise
 include("./unit_commitment/unit_commitment.jl")
 # using .post_processing.jl: get_model_solution
-include("./post_processing.jl") # get_model_solution
+# include("./post_processing.jl") # get_model_solution
 # using .get_model_solution
 # include("../debugging_ignore.jl")
 # __revise_mode__ = :eval
@@ -471,9 +471,9 @@ function solve_economic_dispatch_get_solution(uc, gen_df, loads, gen_variable; k
     for k in first(propertynames(loads[!, Not([HOUR,:day])]), max_iterations)
         println("")
         println("Montecarlo iteration: $k")
-        gen_df_k, loads_df_k, gen_variable_k = pre_process_load_gen_variable(gen_df, rename(loads[!,[HOUR,k]], k=>DEMAND), gen_variable)
-        update_demand(ed, loads_df_k)
-        update_generation(ed, gen_variable_k)
+        gen_df_k, loads_df_k, gen_variable_k = pre_process_load_gen_variable(gen_df, rename(loads[!,[HOUR,k]], k=>DEMAND), gen_variable) # remove negative net load to convert it into net generation asset
+        update_demand(ed, loads_df_k) # update demand values with net load without negative values
+        update_generation(ed, gen_variable_k) # update generation values with net generation asset
         if (k == get(kwargs, :save_constraints_status_for_demand, false)) 
             kwargs[:save_constraints_status] = true
         else
