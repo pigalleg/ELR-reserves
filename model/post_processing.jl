@@ -316,8 +316,8 @@ function get_enriched_storage(solution, data)
 end
 
 function get_enriched_generation(solution, gen_df, gen_variable)
-    join_on = intersect([:r_id, :hour, :scenario], propertynames(solution.GEN))
-    curtail = leftjoin(solution.GEN, gen_variable, on = [:r_id, :hour])
+    join_on = intersect([:r_id, :hour, :scenario], propertynames(solution.GEN), propertynames(gen_variable))
+    curtail = leftjoin(solution.GEN, gen_variable, on = join_on)
     curtail.value = curtail.cf .* curtail.existing_cap_mw - curtail.value
     aux = outerjoin(
         outerjoin(  
