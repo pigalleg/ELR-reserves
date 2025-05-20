@@ -164,7 +164,6 @@ function add_capacity_constraints(model, gen_df, gen_variable, sets)
     )
     # 3. variable generation, accounting for hourly capacity factor
     # TODO: The way this constraint is declared does not follow general style
-    @infiltrate
     @constraint(model, Cap_var[g in 1:nrow(gen_variable)], 
             GEN[gen_variable[g,:r_id], gen_variable[g,:hour], gen_variable[g,:scenario]] <= 
                         gen_variable[g,:cf] *
