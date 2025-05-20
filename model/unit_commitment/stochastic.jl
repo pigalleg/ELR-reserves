@@ -58,7 +58,7 @@ function SUC(gen_df, gen_variable, scenarios, mip_gap, VLOL = 10^4, VLGEN = 0)
     add_commitment_logic(model, gen_df, sets)
     constrain_to_deterministic(model, :GEN, G_thermal) 
     constrain_to_deterministic(model, :GEN, sets.G_nt_nonvar)
-    # constrain_to_deterministic(model, :GEN, sets.G_var) # No need to make it deterministic as this is done already on gen_variable
+    constrain_to_deterministic(model, :GEN, sets.G_var[1:end-1]) # Last element, net_generation, removed
     constrain_to_deterministic(model, :COMMIT)
     constrain_to_deterministic(model, :START)
     constrain_to_deterministic(model, :SHUT)
