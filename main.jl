@@ -361,7 +361,7 @@ function generate_suc_solutions(;days, kwargs...)
             expected_min_SOE = expected_min_SOE,
             config...
             )
-        s_suc =  Dict(day => get_model_solution(suc, gen_df, gen_variable_multi_df; scenarios = scenarios, config...)) # creation of this dictionary is needed for merge_solutions
+        s_suc =  Dict(day => get_model_solution(suc, gen_df, gen_variable_df; scenarios = scenarios, config...)) # creation of this dictionary is needed for merge_solutions
         s_suc = merge_solutions(s_suc, [:day])
         if write
             if !isdir(output_folder) mkpath(output_folder) end
