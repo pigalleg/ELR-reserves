@@ -236,10 +236,10 @@ function main(input_folder = "../../input/RTS-GMLC_v1.0") # This function has be
     temportal_weights = false
     mu_t_all = DataFrame()
     for day in days
-        gen_df, loads_multi_df, gen_variable_multi_df, storage_df, random_loads_multi_df = generate_input_data(day, input_folder)
+        gen_df, loads_df, random_loads_df, gen_variable_df, storage_df,  = generate_deterministic_input_data(day, input_folder)
         required_reserve = filter_day(day, CSV.read(joinpath(input_folder, G_UC_DATA, "Reserve.csv"), DataFrame))
         required_energy_reserve =  filter_day(day, CSV.read(joinpath(input_folder, G_UC_DATA, "Energy reserve.csv"), DataFrame))
-        model, sol_1, sol_2 = solve_empirical_µ_get_solution(gen_df, loads_multi_df, storage_df, required_reserve, required_energy_reserve; temportal_weights = temportal_weights)
+        model, sol_1, sol_2 = solve_empirical_µ_get_solution(gen_df, loads_df, storage_df, required_reserve, required_energy_reserve; temportal_weights = temportal_weights)
         mu_t = calculate_mu_t(sol_1)
         # mu_t = insertcols(mu_t, 1, :rho => rho)
         mu_t = insertcols(mu_t, 1, :day => day)

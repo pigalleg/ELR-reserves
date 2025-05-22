@@ -278,9 +278,6 @@ function add_storage_s(model, storage, scenarios, sets::NamedTuple, expected_min
         @constraint(model, SOEFinalMin[s in S],
             sum(prob[prob.scenario .== σ,:probability][1]*SOE[s,T[end],σ] for σ in Σ) >= storage[storage.r_id .== s,:final_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
         )
-        # @constraint(model, MaxSOEFinal[s in S],
-        #     sum(prob[prob.scenario .== σ,:probability][1]*SOE[s,T[end],σ] for σ in Σ) <= storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
-        # )
     else
         @constraint(model, SOEFinal[s in S],
         sum(prob[prob.scenario .== σ,:probability][1]*SOE[s,T[end],σ] for σ in Σ) == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
