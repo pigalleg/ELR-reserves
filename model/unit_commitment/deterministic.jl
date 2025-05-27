@@ -474,7 +474,7 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
         SOE = model[:SOE]
     end
 
-    VRESERVE = VRESERVE/((length(G_reserve)+1)/2)
+    # VRESERVE = VRESERVE/((length(G_reserve)+1)/2)
     
     @variables(model, begin
         ERESUP[G_reserve, j in T, t in T; j <= t] >= 0
