@@ -3,6 +3,9 @@ import os
 import pyarrow.parquet as pq
 import re
 import warnings
+import numpy as np
+
+
 def parse_configuration_to_mu(x):
     match_obj = re.match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", str(x))
     if match_obj:
@@ -112,4 +115,23 @@ def add_kwargs_as_indices(df, **kwargs):
     return df
     # print(df.index.names)
     # df.drop(columns=list(kwargs.keys()), inplace=True)
-        
+       
+def filter_demand(expected_load, loads_to_filter, required_reserve):
+    """
+    Clamp all columns in loads_to_filter (except 'hour' and optionally 'day')
+    to the range [expected_load.demand - required_reserve.reserve_down_MW,
+                  expected_load.demand + required_reserve.reserve_up_MW]
+    for each row.
+    """
+    select = ['hour', 'day'] if 'day' in loads_to_filter.columns else ['hour']
+    # Ensure indices align for broadcasting
+    loads_to_filter = loads_to_filter.copy()
+    for idx, row in loads_to_filter.iterrows():
+        mask = [col for col in loads_to_filter.columns if col not in select]
+        demand = expected_load.loc[idx, 'demand'] if 'demand' in expected_load.columns else expected_load['demand'].iloc[idx]
+        reserve_down = required_reserve.loc[idx, 'reserve_down_MW'] if 'reserve_down_MW' in required_reserve.columns else required_reserve['reserve_down_MW'].iloc[idx]
+        reserve_up = required_reserve.loc[idx, 'reserve_up_MW'] if 'reserve_up_MW' in required_reserve.columns else required_reserve['reserve_up_MW'].iloc[idx]
+        lower = demand - reserve_down
+        upper = demand + reserve_up
+        loads_to_filter.loc[idx, mask] = np.clip(row[mask], lower, upper)
+    return loads_to_filter
