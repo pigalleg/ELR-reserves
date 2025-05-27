@@ -466,7 +466,7 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
     T = sets.T
     GEN = model[:GEN]
     COMMIT = model[:COMMIT]
-
+     
     G_reserve = G_thermal
     if !isnothing(storage)
         S = create_storage_sets(storage)
@@ -474,12 +474,14 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
         SOE = model[:SOE]
     end
 
+    VRESERVE = VRESERVE/((length(G_reserve)+1)/2)
+    
     @variables(model, begin
         ERESUP[G_reserve, j in T, t in T; j <= t] >= 0
         ERESDN[G_reserve, j in T, t in T; j <= t] >= 0
     end)
     @objective(model, Min, 
-        objective_function(model) + VRESERVE*sum(ERESUP[g,t,t] for g in G_reserve, t in T) + VRESERVE*sum(ERESDN[g,t,t] for g in G_reserve, t in T)
+        objective_function(model) + VRESERVE*sum(ERESUP[g,j,t] for g in G_reserve, j in T, t in T if j <= t) + VRESERVE*sum(ERESDN[g,j,t] for g in G_reserve, j in T, t in T if j <= t) 
     )
 
     @variable(model, VRESERVE in Parameter(VRESERVE)) # used for postprocessing

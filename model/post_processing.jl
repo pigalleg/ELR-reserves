@@ -367,7 +367,7 @@ end
 
 function get_enriched_objective_value(enriched_solution, gen_df, storage, parameters)
     #TODO: deal with missing values
-    function check()
+    function check_cost_consistency()
         aux = combine(groupby(cost, intersect([:scenario], propertynames(cost))), [:production_cost, :fixed_cost, :start_cost] .=> (x -> sum(skipmissing(x))), renamecols = false)
         sum_cost = mean(aux.production_cost.+aux.fixed_cost.+aux.start_cost)
         if !isapprox(enriched_solution[:scalar].OPEX[1], sum_cost; rtol =  parameters.MIPGap) # OPEX = production_cost + fixed_cost + start_cost
@@ -418,9 +418,10 @@ function get_enriched_objective_value(enriched_solution, gen_df, storage, parame
     end
 
     if :energy_reserve in keys(enriched_solution)
-        # This one calculates reserve cost for energy reserve on the diagonal terms!
-        fields_to_remove = [:reserve_up_MW, :reserve_down_MW, :full_id, :hour_i]
-        reserve_cost = filter(y->(y.hour_i .== y.hour),  enriched_solution[:energy_reserve])
+        # fields_to_remove = [:reserve_up_MW, :reserve_down_MW, :full_id, :hour_i] # cost calculated from diagonal terms
+        # reserve_cost = filter(y->(y.hour_i .== y.hour),  enriched_solution[:energy_reserve]) # cost calculated from diagonal terms
+        fields_to_remove = [:reserve_up_MW, :reserve_down_MW, :full_id]
+        reserve_cost = copy(enriched_solution[:energy_reserve])
         reserve_cost.reserve_cost = (reserve_cost.reserve_up_MW + reserve_cost.reserve_down_MW)*parameters.VRESERVE
         select!(reserve_cost, Not(fields_to_remove)) 
         cost = vcat(cost, reserve_cost, cols=:union)
@@ -437,7 +438,7 @@ function get_enriched_objective_value(enriched_solution, gen_df, storage, parame
         select!(losses_cost, Not(fields_to_remove))
         cost = vcat(cost, losses_cost, cols=:union) 
     end
-    check()
+    check_cost_consistency()
     return cost
 end
 
