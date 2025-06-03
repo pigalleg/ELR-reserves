@@ -270,13 +270,16 @@ function add_storage_reserve_power_constraints(model, storage, sets)
     )
 end
 
-function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{DataFrame, Nothing}, bidirectional_storage_reserve::Bool, storage_envelopes::Bool, naive_envelopes::Bool, thermal_reserve::Bool, storage_reserve_repartition::Union{Int64,Float64}, μ_up::Dict, μ_dn::Dict, VRESERVE::Union{Int64,Float64}, sets::NamedTuple)
+function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{DataFrame, Nothing}, bidirectional_storage_reserve::Bool, storage_envelopes::Bool, naive_envelopes::Bool, thermal_reserve::Bool, storage_reserve_repartition::Union{Int64,Float64}, μ_up::Dict, μ_dn::Dict, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
     G_thermal = sets.G_thermal
     T = sets.T
     T_red = sets.T_red
     GEN = model[:GEN]
     COMMIT = model[:COMMIT]
     G_reserve = G_thermal
+    VSRESUP = convert_to_indexed_vector(VSRESUP, T)
+    VSRESDN = convert_to_indexed_vector(VSRESDN, T)
+
     if !isnothing(storage)
         S = create_storage_sets(storage)
         G_reserve = union(G_thermal, S)
@@ -284,13 +287,26 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
     @variables(model, begin
         RESUP[G_reserve, T] >= 0
         RESDN[G_reserve, T] >= 0
+        SRESUP[T] >= 0 # RESUP slack
+        SRESDN[T] >= 0 # RESDN slack
     end)
     
-    @objective(model, Min, 
-        objective_function(model) + VRESERVE*sum(RESUP[g,t] for g in G_reserve, t in T) + VRESERVE*sum(RESDN[g,t] for g in G_reserve, t in T)
-    )
-    @variable(model, VRESERVE in Parameter(VRESERVE)) # used for postprocessing
+    @variable(model, VRESERVE in Parameter(VRESERVE)) # used for post-processing
+    @variable(model, VSRESUP[t in keys(VSRESUP)] in Parameter(VSRESUP[t])) # for post-processing purposes
+    @variable(model, VSRESDN[t in keys(VSRESDN)] in Parameter(VSRESDN[t])) # for post-processing purposes
 
+    @expression(model, ReservePenalizationCost,
+        VRESERVE*sum(RESUP[g,t] + RESDN[g,t] for g in G_reserve, t in T)
+    )
+
+    @expression(model, ReserveSlackPenalizationCost,
+        sum(SRESUP[t]*VSRESUP[t] for t in T) + sum(SRESDN[t]*VSRESDN[t] for t in T)
+    )
+
+    @objective(model, Min, 
+        objective_function(model) + model[:ReservePenalizationCost] + model[:ReserveSlackPenalizationCost]
+    )
+    
     # (1) Reserves limited by committed capacity of generator
     @constraint(model, ResUpThermal[g in G_thermal, t in T],
         RESUP[g,t] <= COMMIT[g,t]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1] - GEN[g,t]
@@ -372,10 +388,10 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
     end
     # (4) Overall reserve requirements
     @constraint(model, ResUpRequirement[t in T],
-        sum(RESUP[g,t] for g in G_reserve) >= reserve[reserve.hour .== t,:reserve_up_MW][1]
+        sum(RESUP[g,t] for g in G_reserve) + SRESUP[t] >= reserve[reserve.hour .== t,:reserve_up_MW][1]
     )
     @constraint(model, ResDnRequirement[t in T],
-        sum(RESDN[g,t] for g in G_reserve) >= reserve[reserve.hour .== t,:reserve_down_MW][1]
+        sum(RESDN[g,t] for g in G_reserve) + SRESDN[t] >= reserve[reserve.hour .== t,:reserve_down_MW][1]
     )
 end
 
@@ -460,13 +476,15 @@ function add_envelope_constraints(model, loads, storage, μ_up, μ_dn, naive_env
     )
 end
 
-function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::Union{DataFrame, Nothing}, storage_envelopes::Bool, storage_link_constraint::Bool, thermal_reserve::Bool, μ_up::Dict, μ_dn::Dict, VRESERVE::Union{Int64,Float64}, sets::NamedTuple)
+function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::Union{DataFrame, Nothing}, storage_envelopes::Bool, storage_link_constraint::Bool, thermal_reserve::Bool, μ_up::Dict, μ_dn::Dict, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
     #TODO: include diagonal ramp reserves
     G_thermal = sets.G_thermal
     T = sets.T
     GEN = model[:GEN]
     COMMIT = model[:COMMIT]
-     
+    VSRESUP = convert_to_indexed_vector(VSRESUP, T)
+    VSRESDN = convert_to_indexed_vector(VSRESDN, T)
+
     G_reserve = G_thermal
     if !isnothing(storage)
         S = create_storage_sets(storage)
@@ -474,17 +492,28 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
         SOE = model[:SOE]
     end
 
-    # VRESERVE = VRESERVE/((length(G_reserve)+1)/2)
-    
+    @variable(model, VRESERVE in Parameter(VRESERVE)) # used for postprocessing
+    @variable(model, VSRESUP[t in keys(VSRESUP)] in Parameter(VSRESUP[t])) # for post-processing purposes
+    @variable(model, VSRESDN[t in keys(VSRESDN)] in Parameter(VSRESDN[t]))
+
     @variables(model, begin
         ERESUP[G_reserve, j in T, t in T; j <= t] >= 0
         ERESDN[G_reserve, j in T, t in T; j <= t] >= 0
+        SERESUP[j in T, t in T; j <= t] >= 0 # ERESUP slack
+        SERESDN[j in T, t in T; j <= t] >= 0 # ERESDN slack
     end)
-    @objective(model, Min, 
-        objective_function(model) + VRESERVE*sum(ERESUP[g,j,t] for g in G_reserve, j in T, t in T if j <= t) + VRESERVE*sum(ERESDN[g,j,t] for g in G_reserve, j in T, t in T if j <= t) 
+
+    @expression(model, EnergyReservePenalizationCost,
+        VRESERVE*sum(ERESUP[g,j,t] + ERESDN[g,j,t] for g in G_reserve, j in T, t in T if j <= t)
+    )
+    
+    @expression(model, EnergyReserveSlackPenalizationCost,
+        sum(SERESUP[j,t]*VSRESUP[t] for j in T, t in T if j <= t) + sum(SERESDN[j,t]*VSRESDN[t] for j in T, t in T if j <= t)
     )
 
-    @variable(model, VRESERVE in Parameter(VRESERVE)) # used for postprocessing
+    @objective(model, Min, 
+        objective_function(model) + model[:EnergyReservePenalizationCost] + model[:EnergyReserveSlackPenalizationCost]
+    )
 
     # (1) Reserves limited by committed capacity of generator
     @constraint(model, EnergyResUpThermal[g in G_thermal, j in T, t in T; j <= t],
@@ -593,11 +622,11 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
 
     # (4) Overall reserve requirements
     @constraint(model, EnergyResUpRequirement[j in T, t in T; j <= t],
-        sum(ERESUP[i, j, t] for i in G_reserve) >= reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_up_MW][1]
+        sum(ERESUP[i,j,t] for i in G_reserve) + SERESUP[j,t] >= reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_up_MW][1]
     )
  
     @constraint(model, EnergyResDnRequirement[j in T, t in T; j <= t],
-        sum(ERESDN[i, j, t] for i in G_reserve) >= reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_down_MW][1]
+        sum(ERESDN[i,j,t] for i in G_reserve) + SERESDN[j,t] >= reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_down_MW][1]
     )
 
 end

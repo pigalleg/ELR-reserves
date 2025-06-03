@@ -117,6 +117,7 @@ function calculate_adecuacy_gcd_KPI(gcdi_KPI)
         :input_load_uc_MWh => :input_load_uc_MWh, # manually cheked that the average gives back the original value
         :nonRES_nonThermal_production_MWh => :E_nonRES_nonThermal_production_MWh, :storage_charge_MWh => :E_storage_charge_MWh, :storage_discharge_MWh => :E_storage_discharge_MWh, :storage_net_charge_MWh => :E_storage_net_charge_MWh, :SOE_0_MWh => :SOE_0_MWh, :SOE_T_MWh => :E_SOE_T_MWh, :net_SOE_MWh => :E_net_SOE_MWh,
         :objective_value => :EOV, :objective_value_uc => :OV_uc, :OPEX => :EOPEX, :OPEX_uc => :OPEX_uc, :redispatch_cost => :E_redispatch_cost, :LOL_cost => :EENS_cost, :LGEN_cost => :ELGEN_cost, :reserve_cost => :E_reserve_cost, :reserve_cost_uc => :reserve_cost_uc,
+        :slack_reserve_up_cost => :E_slack_reserve_up_cost, :slack_reserve_down_cost => :E_slack_reserve_down_cost, :slack_reserve_up_cost_uc => :slack_reserve_up_cost_uc, :slack_reserve_down_cost_uc => :slack_reserve_down_cost_uc,
         :start_cost => :E_start_cost, :fixed_cost => :E_fixed_cost, :production_cost => :E_production_cost, 
         :avg_marginal_energy_price_MU_MWh => :E_avg_marginal_energy_price_MU_MWh, :avg_marginal_energy_price_uc_MU_MWh => :avg_marginal_energy_price_uc_MU_MWh,
         :avg_marginal_reserve_up_price_uc_MU_MWh => :avg_marginal_reserve_up_price_uc_MU_MWh, :avg_marginal_reserve_down_price_uc_MU_MWh => :avg_marginal_reserve_down_price_uc_MU_MWh,
@@ -131,7 +132,7 @@ function calculate_adecuacy_gcd_KPI(gcdi_KPI)
 end
 
 function calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by)
-    keys_objective_value = intersect([:production_cost, :fixed_cost, :start_cost, :LOL_cost, :LGEN_cost, :reserve_cost], propertynames(s_ed.objective_function))
+    keys_objective_value = intersect([:production_cost, :fixed_cost, :start_cost, :LOL_cost, :LGEN_cost, :reserve_cost, :slack_reserve_up_cost, :slack_reserve_down_cost], propertynames(s_ed.objective_function))
     out = combine(groupby(s_ed.objective_function, group_by), keys_objective_value .=> (x -> sum(skipmissing(x))), renamecols = false)
     out.OPEX = out.production_cost .+ out.fixed_cost .+ out.start_cost # this OPEX definition corresponds to model[:OPEX]
     out.objective_value = sum(eachcol(out[:,keys_objective_value]))
@@ -142,7 +143,7 @@ function calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by)
         keys_objective_value_uc = intersect(keys_objective_value, propertynames(s_uc.objective_function))
         leftjoin!(out, combine(groupby(s_uc.objective_function, group_by_uc), keys_objective_value_uc .=> (x -> sum(skipmissing(x))) .=> Symbol.(keys_objective_value_uc, "_uc")), on = group_by_uc)
         out.OPEX_uc = out.production_cost_uc .+ out.fixed_cost_uc .+ out.start_cost_uc
-        out.objective_value_uc = out.OPEX_uc .+ out.reserve_cost_uc
+        out.objective_value_uc = out.OPEX_uc .+ out.reserve_cost_uc .+ out.slack_reserve_up_cost_uc .+ out.slack_reserve_down_cost_uc
         out.redispatch_cost = out.OPEX .- out.OPEX_uc
     end
     if :configuration in propertynames(out)
