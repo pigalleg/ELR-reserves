@@ -10,6 +10,8 @@ function construct_deterministic_unit_commitment(gen_df, loads, gen_variable, mi
     storage_link_constraint =  get(kwargs, :storage_link_constraint, false)
     storage_reserve_repartition =  get(kwargs, :storage_reserve_repartition, 1)
     VRESERVE = get(kwargs, :VRESERVE, 1e-6)
+    VSRESUP = get(kwargs, :VSRESUP, 1e4)
+    VSRESDN = get(kwargs, :VSRESDN, 30)
     bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
     thermal_reserve = get(kwargs, :thermal_reserve, false)
     naive_envelopes = get(kwargs, :naive_envelopes, false)
@@ -38,11 +40,11 @@ function construct_deterministic_unit_commitment(gen_df, loads, gen_variable, mi
     end
     if !isnothing(reserve) 
         println("Adding reserve constraints...")
-        add_reserve_constraints(uc, reserve, loads, gen_df, storage, bidirectional_storage_reserve, storage_envelopes, naive_envelopes, thermal_reserve, storage_reserve_repartition, μ_up, μ_dn, VRESERVE, sets)
+        add_reserve_constraints(uc, reserve, loads, gen_df, storage, bidirectional_storage_reserve, storage_envelopes, naive_envelopes, thermal_reserve, storage_reserve_repartition, μ_up, μ_dn, VRESERVE, VSRESUP, VSRESDN, sets)
     end
     if !isnothing(energy_reserve)
         println("Adding energy reserve constraints...")
-        add_energy_reserve_constraints(uc, energy_reserve, loads, gen_df, storage, storage_envelopes, storage_link_constraint, thermal_reserve, μ_up, μ_dn, VRESERVE, sets)
+        add_energy_reserve_constraints(uc, energy_reserve, loads, gen_df, storage, storage_envelopes, storage_link_constraint, thermal_reserve, μ_up, μ_dn, VRESERVE, VSRESUP, VSRESDN, sets)
     end
     return uc
 end

@@ -65,34 +65,7 @@ config = (
     # μ_up = 1,
     # μ_dn = 1,
 )
-
-# function load_configuration(storage_df, required_reserve)
-#     config = (
-#         mip_gap = G_MIP_GAP,
-#         ramp_constraints = true,
-#         storage = storage_df,
-#         # reserve = required_reserve,
-#         # energy_reserve = required_energy_reserve,
-#         # energy_reserve = required_energy_reserve_cumulated,
-#         enriched_solution = true,
-#         # storage_envelopes = true,
-#         # μ_up = 1,
-#         # μ_dn = 1,
-#     )                   
-#     return config
-# end
-
-# function load_deterministic_data(day, input_folder)
-#     # Load data and filter net load based on reserve requirements
-#     gen_df, loads_df, gen_variable_df, storage_df, random_loads_df, required_reserve= generate_deterministic_input_data(day, input_folder)
-#     return gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve
-# end
-
-# function load_stochastic_data(day, input_folder,)
-#     # Load data, filter net load based on reserve requirements, and adapt gen_variable
-#     gen_df, loads_df, gen_variable_df, storage_df = generate_stochastic_input_data(day, input_folder, stochastic = true)
-#     scenarios = load_scenarios(day, input_folder, loads_multi_df, required_reserve)
-# end    
+  
 
 function load_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, ε, ρ)
     file = joinpath(input_folder, G_UC_DATA, "Energy reserve.csv")
@@ -285,6 +258,8 @@ function generate_ed_solutions_(days, input_folder, output_folder, configuration
         # :VLOL => get(kwargs, :VLOL, 1e4),
         :mip_gap => get(kwargs, :mip_gap, 1e-8), 
         :VLGEN => get(kwargs, :VLGEN, 0),
+        :VSRESUP => get(kwargs, :VSRESUP, 1e4),
+        :VSRESDN => get(kwargs, :VSRESDN, 30),
         :thermal_reserve =>  get(kwargs, :thermal_reserve, false),
         :bidirectional_storage_reserve => get(kwargs, :bidirectional_storage_reserve, true),
         :constrain_SOE_by_envelopes => get(kwargs, :constrain_SOE_by_envelopes, false),

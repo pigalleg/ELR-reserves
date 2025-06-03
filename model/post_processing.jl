@@ -96,7 +96,7 @@ function get_solution(model, stochastic = false, get_dual_variables = false)
 end
 
 function get_solution_variables(model, stochastic)
-    variables_to_get = [:GEN, :COMMIT, :SHUT, :START, :CH, :DIS, :SOE, :SOEUP, :SOEDN, :ESOEUP, :ESOEDN, :RESUP, :CHRESDNCH, :CHRESUPCH, :DISRESUPDIS, :DISRESDNDIS, :RESDN, :ERESUP, :ERESDN, :LOL, :LGEN, :SOEUP_EC, :SOEDN_EC, :RESUPDIS, :RESUPCH, :RESDNDIS, :RESDNCH]   
+    variables_to_get = [:GEN, :COMMIT, :SHUT, :START, :CH, :DIS, :SOE, :SOEUP, :SOEDN, :ESOEUP, :ESOEDN, :RESUP, :CHRESDNCH, :CHRESUPCH, :DISRESUPDIS, :DISRESDNDIS, :RESDN, :ERESUP, :ERESDN, :LOL, :LGEN, :SOEUP_EC, :SOEDN_EC, :RESUPDIS, :RESUPCH, :RESDNDIS, :RESDNCH, :SRESUP, :SRESDN, :SERESUP, :SERESDN]   
     return NamedTuple(k => value_to_df(model[k], stochastic) for k in intersect(keys(object_dictionary(model)), variables_to_get))
 end
 
@@ -120,10 +120,23 @@ function get_model_solution(model, gen_df, gen_variable; loads = nothing, scenar
     if haskey(model, :VRESERVE) # UC
         parameters_for_enriching = merge(parameters_for_enriching, (VRESERVE = parameter_value(model[:VRESERVE]),))
     end
-    if haskey(model, :VLOL) # ED or SUC
+    if haskey(model, :VLOL) && haskey(model, :VLGEN) # ED or SUC
         parameters_for_enriching = merge(parameters_for_enriching,
             (VLOL = Array(parameter_value.(model[:VLOL])),
             VLGEN = Array(parameter_value.(model[:VLGEN])))
+        )
+    end
+    if haskey(model, :μ_up) && haskey(model, :μ_dn) # UC or SUC
+        parameters_for_enriching = merge(parameters_for_enriching,
+            (μ_up = Array(parameter_value.(model[:μ_up])),
+            μ_dn = Array(parameter_value.(model[:μ_dn])))
+        )
+        
+    end
+    if haskey(model, :VSRESUP) && haskey(model, :VSRESDN) # UC
+        parameters_for_enriching = merge(parameters_for_enriching,
+            (VSRESUP = Array(parameter_value.(model[:VSRESUP])),
+            VSRESDN = Array(parameter_value.(model[:VSRESDN])))
         )
     end
     if enriched_solution
@@ -153,10 +166,10 @@ function enrich_dfs(solution, gen_df, loads, gen_variable, storage, parameters, 
         out[:storage] = get_enriched_storage(solution, data)
         out[:storage_parameters] = get_storage_parameters(storage)
     end
-    if haskey(solution, :RESUP) & haskey(solution, :RESDN) # if reserve elements are stored
+    if haskey(solution, :RESUP) & haskey(solution, :RESDN)
         out[:reserve] =  get_enriched_reserve(solution, data)
     end
-    if haskey(solution, :ERESUP) & haskey(solution, :ERESDN) # if e-reserve elements are stored
+    if haskey(solution, :ERESUP) & haskey(solution, :ERESDN)
         out[:energy_reserve] =  get_enriched_energy_reserve(solution, data)
     end
     if haskey(solution, :SupplyDemandBalance_dual)
@@ -234,7 +247,7 @@ end
     
 
 function get_enriched_energy_reserve(solution, data)
-    return leftjoin(
+    aux = leftjoin(
         innerjoin(
             rename(solution.ERESUP, :value => :reserve_up_MW),
             rename(solution.ERESDN, :value => :reserve_down_MW),
@@ -243,6 +256,19 @@ function get_enriched_energy_reserve(solution, data)
         data[!,FIELD_FOR_ENRICHING],
         on = :r_id
     )
+    if haskey(solution, :SERESUP) && haskey(solution, :SERESDN)
+        slack_reserve = innerjoin(
+            rename(solution.SERESUP, :value => :slack_energy_reserve_up_MW),
+            rename(solution.SERESDN, :value => :slack_energy_reserve_down_MW),
+            on = [:hour_i, :hour]
+        )
+        slack_reserve.resource .= "system"
+        aux = outerjoin(
+            aux, 
+            slack_reserve,
+            on = [:resource, :hour_i, :hour])
+    end
+    return aux
 end
 
 function get_enriched_reserve(solution, data)
@@ -273,6 +299,18 @@ function get_enriched_reserve(solution, data)
             rename(solution.DISRESDNDIS, :value => :discharge_reserve_min_MW),
             on = [:r_id, :hour]
         )
+    end
+    if haskey(solution, :SRESUP) && haskey(solution, :SRESDN)
+        slack_reserve = innerjoin(
+            rename(solution.SRESUP, :value => :slack_reserve_up_MW),
+            rename(solution.SRESDN, :value => :slack_reserve_down_MW),
+            on = [:hour]
+        )
+        slack_reserve.resource .= "system"
+        aux = outerjoin(
+            aux, 
+            slack_reserve,
+            on = [:resource, :hour,])
     end
     return aux
 end
@@ -371,10 +409,12 @@ function get_enriched_objective_value(enriched_solution, gen_df, storage, parame
         aux = combine(groupby(cost, intersect([:scenario], propertynames(cost))), [:production_cost, :fixed_cost, :start_cost] .=> (x -> sum(skipmissing(x))), renamecols = false)
         sum_cost = mean(aux.production_cost.+aux.fixed_cost.+aux.start_cost)
         if !isapprox(enriched_solution[:scalar].OPEX[1], sum_cost; rtol =  parameters.MIPGap) # OPEX = production_cost + fixed_cost + start_cost
-            error("Start and operational cost missmatch with OPEX")
+            error("Start and operational cost mismatch with OPEX")
         end
         if :reserve_cost in propertynames(cost)
             sum_cost += sum(skipmissing(cost.reserve_cost))
+            sum_cost += sum(skipmissing(cost.slack_reserve_up_cost))
+            sum_cost += sum(skipmissing(cost.slack_reserve_down_cost))
         end
         if :LOL_cost in propertynames(cost)
             aux = combine(groupby(cost, intersect([:scenario], propertynames(cost))),[:LOL_cost, :LGEN_cost] .=> (x->sum(skipmissing(x))), renamecols = false)
@@ -413,16 +453,24 @@ function get_enriched_objective_value(enriched_solution, gen_df, storage, parame
         fields_to_remove = [:reserve_up_MW, :reserve_down_MW, :full_id]
         reserve_cost = copy(enriched_solution[:reserve])
         reserve_cost.reserve_cost = (reserve_cost.reserve_up_MW + reserve_cost.reserve_down_MW)*parameters.VRESERVE
+        min_hour = minimum(reserve_cost.hour)
+        transform!(groupby(reserve_cost,[:hour]), # we multiply the slack variable by the their penalization cost at each :hour
+            [:slack_reserve_up_MW, :hour] => ((x,y) -> x.*parameters.VSRESUP[y[1]-min_hour+1]) => :slack_reserve_up_cost, # hour-wise multiplication
+            [:slack_reserve_down_MW, :hour] => ((x,y) -> x.*parameters.VSRESDN[y[1]-min_hour+1]) => :slack_reserve_down_cost # hour-wise multiplication
+         )
         select!(reserve_cost, Not(fields_to_remove)) 
         cost = vcat(cost, reserve_cost, cols=:union)
     end
 
     if :energy_reserve in keys(enriched_solution)
-        # fields_to_remove = [:reserve_up_MW, :reserve_down_MW, :full_id, :hour_i] # cost calculated from diagonal terms
-        # reserve_cost = filter(y->(y.hour_i .== y.hour),  enriched_solution[:energy_reserve]) # cost calculated from diagonal terms
-        fields_to_remove = [:reserve_up_MW, :reserve_down_MW, :full_id]
+        fields_to_remove = [:reserve_up_MW, :reserve_down_MW, :full_id, :slack_energy_reserve_up_MW, :slack_energy_reserve_down_MW]
         reserve_cost = copy(enriched_solution[:energy_reserve])
         reserve_cost.reserve_cost = (reserve_cost.reserve_up_MW + reserve_cost.reserve_down_MW)*parameters.VRESERVE
+        min_hour = minimum(reserve_cost.hour)
+        transform!(groupby(reserve_cost,[:hour]), # we multiply the slack variable by the their penalization cost at each :hour
+            [:slack_energy_reserve_up_MW, :hour] => ((x,y) -> x.*parameters.VSRESUP[y[1]-min_hour+1]) => :slack_reserve_up_cost, # hour-wise multiplication
+            [:slack_energy_reserve_down_MW, :hour] => ((x,y) -> x.*parameters.VSRESDN[y[1]-min_hour+1]) => :slack_reserve_down_cost # hour-wise multiplication
+         )
         select!(reserve_cost, Not(fields_to_remove)) 
         cost = vcat(cost, reserve_cost, cols=:union)
     end
