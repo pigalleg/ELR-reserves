@@ -398,24 +398,24 @@ end
 function add_storage_reserve_repartition(model, reserve, storage_reserve_repartition, sets)
     RESUP = model[:RESUP]
     RESDN = model[:RESDN]
+    SRESUP = model[:SRESUP]
+    SRESDN = model[:SRESDN]
     S = axes(model[:SOE])[1]
     T = sets.T
     not_S = setdiff(axes(model[:RESUP])[1],S)
     @constraint(model, ResUpStorageRepartition,
-        sum(RESUP[s,t] for s in S, t in T) == storage_reserve_repartition * sum(reserve[:,:reserve_up_MW])
+        sum(RESUP[s,t] for s in S, t in T) == storage_reserve_repartition * (sum(reserve[:,:reserve_up_MW]) - sum(SRESUP[t] for t in T)) # SRESUP is the slack variable for reserve up
     )
     @constraint(model, ResDnStorageRepartition,
-        sum(RESDN[s,t] for s in S, t in T) == storage_reserve_repartition * sum(reserve[:,:reserve_down_MW])
+        sum(RESDN[s,t] for s in S, t in T) == storage_reserve_repartition * (sum(reserve[:,:reserve_down_MW])- sum(SRESUP[t] for t in T))
     )
 
     @constraint(model, ResUpNotStorageRepartition,
-        sum(RESUP[s,t] for s in not_S, t in T) == (1-storage_reserve_repartition) * sum(reserve[:,:reserve_up_MW])
+        sum(RESUP[s,t] for s in not_S, t in T) == (1-storage_reserve_repartition) * (sum(reserve[:,:reserve_up_MW]) - sum(SRESUP[t] for t in T))
     )
     @constraint(model, ResDnNotStorageRepartition,
-        sum(RESDN[s,t] for s in not_S, t in T) == (1-storage_reserve_repartition) * sum(reserve[:,:reserve_down_MW])
+        sum(RESDN[s,t] for s in not_S, t in T) == (1-storage_reserve_repartition) * (sum(reserve[:,:reserve_down_MW])- sum(SRESUP[t] for t in T))
     )
-
-
 end
 
 function add_envelope_constraints(model, loads, storage, μ_up, μ_dn, naive_envelopes = false)

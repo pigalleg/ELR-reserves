@@ -143,7 +143,10 @@ function calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by)
         keys_objective_value_uc = intersect(keys_objective_value, propertynames(s_uc.objective_function))
         leftjoin!(out, combine(groupby(s_uc.objective_function, group_by_uc), keys_objective_value_uc .=> (x -> sum(skipmissing(x))) .=> Symbol.(keys_objective_value_uc, "_uc")), on = group_by_uc)
         out.OPEX_uc = out.production_cost_uc .+ out.fixed_cost_uc .+ out.start_cost_uc
-        out.objective_value_uc = out.OPEX_uc .+ out.reserve_cost_uc .+ out.slack_reserve_up_cost_uc .+ out.slack_reserve_down_cost_uc
+        out.objective_value_uc = out.OPEX_uc .+ out.reserve_cost_uc 
+        if hasproperty(out, :redispatch_cost) && hasproperty(out, :redispatch_cost)
+            out.objective_value_uc = out.objective_value_uc .+ out.slack_reserve_up_cost_uc .+ out.slack_reserve_down_cost_uc
+        end
         out.redispatch_cost = out.OPEX .- out.OPEX_uc
     end
     if :configuration in propertynames(out)
