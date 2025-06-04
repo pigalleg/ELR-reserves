@@ -388,10 +388,10 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
     end
     # (4) Overall reserve requirements
     @constraint(model, ResUpRequirement[t in T],
-        sum(RESUP[g,t] for g in G_reserve) + SRESUP[t] >= reserve[reserve.hour .== t,:reserve_up_MW][1]
+        sum(RESUP[g,t] for g in G_reserve) + SRESUP[t] == reserve[reserve.hour .== t,:reserve_up_MW][1]
     )
     @constraint(model, ResDnRequirement[t in T],
-        sum(RESDN[g,t] for g in G_reserve) + SRESDN[t] >= reserve[reserve.hour .== t,:reserve_down_MW][1]
+        sum(RESDN[g,t] for g in G_reserve) + SRESDN[t] == reserve[reserve.hour .== t,:reserve_down_MW][1]
     )
 end
 
@@ -622,11 +622,11 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
 
     # (4) Overall reserve requirements
     @constraint(model, EnergyResUpRequirement[j in T, t in T; j <= t],
-        sum(ERESUP[i,j,t] for i in G_reserve) + SERESUP[j,t] >= reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_up_MW][1]
+        sum(ERESUP[i,j,t] for i in G_reserve) + SERESUP[j,t] == reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_up_MW][1]
     )
  
     @constraint(model, EnergyResDnRequirement[j in T, t in T; j <= t],
-        sum(ERESDN[i,j,t] for i in G_reserve) + SERESDN[j,t] >= reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_down_MW][1]
+        sum(ERESDN[i,j,t] for i in G_reserve) + SERESDN[j,t] == reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_down_MW][1]
     )
 
 end
