@@ -11,6 +11,7 @@ function DUC(gen_df, loads, gen_variable, mip_gap)
     # model = direct_model(Gurobi.Optimizer());
     set_optimizer_attribute(model, "MIPGap", mip_gap)
     @variable(model, MIPGap in Parameter(mip_gap))
+    @variable(model, FeasibilityTol in Parameter(get_optimizer_attribute(model, "FeasibilityTol")))
     # set_optimizer_attribute(model, "LogFile", "./output/log_file.txt")
     set_optimizer_attribute(model, "OutputFlag", 0)
     # model = Model(HiGHS.Optimizer)
@@ -294,6 +295,8 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
     @variable(model, VRESERVE in Parameter(VRESERVE)) # used for post-processing
     @variable(model, VSRESUP[t in keys(VSRESUP)] in Parameter(VSRESUP[t])) # for post-processing purposes
     @variable(model, VSRESDN[t in keys(VSRESDN)] in Parameter(VSRESDN[t])) # for post-processing purposes
+    @variable(model, RRESUP[t in T] in Parameter(reserve[reserve.hour .== t,:reserve_up_MW][1]))
+    @variable(model, RRESDN[t in T] in Parameter(reserve[reserve.hour .== t,:reserve_down_MW][1]))
 
     @expression(model, ReservePenalizationCost,
         VRESERVE*sum(RESUP[g,t] + RESDN[g,t] for g in G_reserve, t in T)
@@ -345,7 +348,8 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
         RESUPCH = model[:RESUPCH]
         RESDNCH = model[:RESDNCH]
         RESDNDIS = model[:RESDNDIS]
-
+        RRESUP = model[:RRESUP]
+        RRESDN = model[:RRESDN]
         # Energy constraints # important for μ=0 ?
         # @constraint(model, ResUpStorageDisMax[s in S, t in T],
         #     RESUPDIS[s,t] <= (SOE[s,t]- storage[storage.r_id .== s,:min_energy_mwh][1])*storage[storage.r_id .== s,:discharge_efficiency][1] #TODO: include delta_T
@@ -382,16 +386,18 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
             add_envelope_constraints(model, loads, storage, μ_up, μ_dn, naive_envelopes)
         end
         if storage_reserve_repartition >=0
-            println("Adding storage reserve repartition...")
-            add_storage_reserve_repartition(model, reserve, storage_reserve_repartition, sets)
+            @warn "Storage reserve repartition is currently disabled. No constraints are being added."
+            # WARNING: storage reserve repartition disabled
+            # println("Adding storage reserve repartition...")
+            # add_storage_reserve_repartition(model, reserve, storage_reserve_repartition, sets)
         end 
     end
     # (4) Overall reserve requirements
     @constraint(model, ResUpRequirement[t in T],
-        sum(RESUP[g,t] for g in G_reserve) + SRESUP[t] == reserve[reserve.hour .== t,:reserve_up_MW][1]
+        sum(RESUP[g,t] for g in G_reserve) + SRESUP[t] >= RRESUP[t]
     )
     @constraint(model, ResDnRequirement[t in T],
-        sum(RESDN[g,t] for g in G_reserve) + SRESDN[t] == reserve[reserve.hour .== t,:reserve_down_MW][1]
+        sum(RESDN[g,t] for g in G_reserve) + SRESDN[t] >= RRESDN[t]
     )
 end
 
@@ -404,12 +410,11 @@ function add_storage_reserve_repartition(model, reserve, storage_reserve_reparti
     T = sets.T
     not_S = setdiff(axes(model[:RESUP])[1],S)
     @constraint(model, ResUpStorageRepartition,
-        sum(RESUP[s,t] for s in S, t in T) == storage_reserve_repartition * (sum(reserve[:,:reserve_up_MW]) - sum(SRESUP[t] for t in T)) # SRESUP is the slack variable for reserve up
+        sum(RESUP[s,t] for s in S, t in T) == storage_reserve_repartition * (sum(reserve[:,:reserve_up_MW]) - sum(SRESUP[t] for t in T)) 
     )
     @constraint(model, ResDnStorageRepartition,
         sum(RESDN[s,t] for s in S, t in T) == storage_reserve_repartition * (sum(reserve[:,:reserve_down_MW])- sum(SRESUP[t] for t in T))
     )
-
     @constraint(model, ResUpNotStorageRepartition,
         sum(RESUP[s,t] for s in not_S, t in T) == (1-storage_reserve_repartition) * (sum(reserve[:,:reserve_up_MW]) - sum(SRESUP[t] for t in T))
     )
@@ -495,6 +500,8 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
     @variable(model, VRESERVE in Parameter(VRESERVE)) # used for postprocessing
     @variable(model, VSRESUP[t in keys(VSRESUP)] in Parameter(VSRESUP[t])) # for post-processing purposes
     @variable(model, VSRESDN[t in keys(VSRESDN)] in Parameter(VSRESDN[t]))
+    @variable(model, RERESUP[j in T, t in T; j <= t] in Parameter(reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_up_MW][1]))
+    @variable(model, RERESDN[j in T, t in T; j <= t] in Parameter(reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_down_MW][1]))
 
     @variables(model, begin
         ERESUP[G_reserve, j in T, t in T; j <= t] >= 0
@@ -622,11 +629,11 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
 
     # (4) Overall reserve requirements
     @constraint(model, EnergyResUpRequirement[j in T, t in T; j <= t],
-        sum(ERESUP[i,j,t] for i in G_reserve) + SERESUP[j,t] == reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_up_MW][1]
+        sum(ERESUP[i,j,t] for i in G_reserve) + SERESUP[j,t] >= RERESUP[j,t]
     )
  
     @constraint(model, EnergyResDnRequirement[j in T, t in T; j <= t],
-        sum(ERESDN[i,j,t] for i in G_reserve) + SERESDN[j,t] == reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_down_MW][1]
+        sum(ERESDN[i,j,t] for i in G_reserve) + SERESDN[j,t] >= RERESDN[j,t]
     )
 
 end
