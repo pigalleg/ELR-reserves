@@ -154,7 +154,7 @@ function generate_post_processing_KPI_files(folder_path; stochastic = false, fol
         # Check consistency in objective function
         x = sort(gcdi_KPI_adequacy, group_by)
         y = sort(gcdi_objective_function_KPI, group_by)
-        if !(all(isapprox.(x.objective_value,  sum(eachcol(y[:,intersect([:OPEX, :LOL_cost, :LGEN_cost, :reserve_cost, :slack_reserve_up_cost, :slack_reserve_down_cost], propertynames(y))])), rtol=10^-8)))
+        if !(all(isapprox.(x.objective_value,  sum(eachcol(y[:,intersect([:OPEX, :LOL_cost, :LGEN_cost, :reserve_cost, :slack_reserve_up_cost, :slack_reserve_down_cost,:energy_reserve_cost, :slack_energy_reserve_up_cost, :slack_energy_reserve_down_cost], propertynames(y))])), rtol=10^-8)))
             error("Mismatch in objective value")
         end
         if !(all(isapprox.(x.OPEX,  y.OPEX , rtol=10^-8)))
@@ -265,7 +265,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, configuration
         :constrain_SOE_by_envelopes => get(kwargs, :constrain_SOE_by_envelopes, false),
         # :naive_envelopes => get(kwargs, :naive_envelopes, false),
         :variables_to_constrain => get(kwargs, :variables_to_constrain, [:GEN]),
-        :storage_reserve_repartition =>  get(kwargs, :storage_reserve_repartition, 1),
+        # :storage_reserve_repartition =>  get(kwargs, :storage_reserve_repartition, 1),
         :get_dual_variables => get(kwargs, :get_dual_variables, false),
     )
     # configurations = vcat(configurations, [:base_ramp_storage_energy_reserve_cumulated])

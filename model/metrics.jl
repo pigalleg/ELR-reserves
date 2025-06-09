@@ -55,8 +55,36 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
         return out
     end
 
-    function calculate_basic_KPI_uc(s_uc, group_by) #TODO: move it to calculate_adecuacy_gcd_KPI()
-        return combine(groupby(s_uc.demand, group_by), :demand_MW => sum => :input_load_uc_MWh)  # For now we just need this parameter
+    function calculate_uc_KPI(s_uc, group_by) #TODO: move it to calculate_adecuacy_gcd_KPI()
+        out = combine(groupby(s_uc.demand, group_by), :demand_MW => sum => :input_load_uc_MWh)
+        source_df = nothing
+        if :reserve in keys(s_uc)
+            keys_to_combine = Dict(
+                :reserve_up_MW => :reserve_up_uc_MWh,
+                :reserve_down_MW => :reserve_down_uc_MWh,
+                :slack_reserve_up_MW => :slack_reserve_up_uc_MWh,
+                :slack_reserve_down_MW => :slack_reserve_down_uc_MWh,
+                :required_reserve_up_MW => :required_reserve_up_uc_MWh,
+                :required_reserve_down_MW => :required_reserve_down_uc_MWh
+            )
+            source_df = s_uc.reserve
+        end 
+        if :energy_reserve in keys(s_uc)
+            keys_to_combine = Dict(
+                :energy_reserve_up_MW => :energy_reserve_up_uc_MWh,
+                :energy_reserve_down_MW => :energy_reserve_down_uc_MWh,
+                :slack_energy_reserve_up_MW => :slack_energy_reserve_up_uc_MWh,
+                :slack_energy_reserve_down_MW => :slack_energy_reserve_down_uc_MWh,
+                :required_energy_reserve_up_MW => :required_energy_reserve_up_uc_MWh,
+                :required_energy_reserve_down_MW => :required_energy_reserve_down_uc_MWh
+            )
+            source_df = s_uc.energy_reserve
+        end 
+        if !isnothing(source_df)
+            keys_to_combine = Dict(k => v for (k, v) in keys_to_combine if k in propertynames(s_uc.reserve))
+            leftjoin!(out, combine(groupby(source_df, group_by), keys(keys_to_combine) .=> (x -> sum(skipmissing(x))) .=> values(keys_to_combine)), on = group_by)
+        end 
+        return out
     end
     
     function calculate_dual_variables(s_ed, s_uc, group_by)
@@ -66,11 +94,11 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
         end
         function calculate_uc_dual_variables(s_uc, group_by_uc) #TODO: move it to calculate_adecuacy_gcd_KPI()
             keys_to_combine = Dict(
-            :dual_supply_demand_balance_MU_MW => :avg_marginal_energy_price_uc_MU_MWh,
-            :dual_reserve_up_requirement_MU_MW => :avg_marginal_reserve_up_price_uc_MU_MWh,
-            :dual_reserve_down_requirement_MU_MW => :avg_marginal_reserve_down_price_uc_MU_MWh,
-            :dual_energy_reserve_up_requirement_MU_MW => :avg_marginal_energy_reserve_up_price_uc_MU_MWh,
-            :dual_energy_reserve_down_requirement_MU_MW => :avg_marginal_energy_reserve_down_price_uc_MU_MWh,
+                :dual_supply_demand_balance_MU_MW => :avg_marginal_energy_price_uc_MU_MWh,
+                :dual_reserve_up_requirement_MU_MW => :avg_marginal_reserve_up_price_uc_MU_MWh,
+                :dual_reserve_down_requirement_MU_MW => :avg_marginal_reserve_down_price_uc_MU_MWh,
+                :dual_energy_reserve_up_requirement_MU_MW => :avg_marginal_energy_reserve_up_price_uc_MU_MWh,
+                :dual_energy_reserve_down_requirement_MU_MW => :avg_marginal_energy_reserve_down_price_uc_MU_MWh,
             )
             keys_to_combine = Dict(k => v for (k, v) in keys_to_combine if k in propertynames(s_uc.dual_variables))
 
@@ -86,7 +114,7 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
             out =  leftjoin!(out, calculate_uc_dual_variables(s_uc, group_by_uc), on = group_by_uc) #TODO: check if innerjoin can be used instead of left to generate missing values instead of repetead ones
         end
         return out
-    end
+    end 
 
     group_by = intersect([:configuration, :day, :iteration, :scenario], propertynames(s_ed.demand))
     gcdi_KPI = calculate_basic_KPI(s_ed, group_by)
@@ -98,7 +126,7 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
 
     if !isnothing(s_uc)
         group_by_uc = intersect([:configuration, :day], group_by)
-        leftjoin!(gcdi_KPI, calculate_basic_KPI_uc(s_uc, group_by_uc), on = group_by_uc)
+        leftjoin!(gcdi_KPI, calculate_uc_KPI(s_uc, group_by_uc), on = group_by_uc)
     end
 
     if :configuration in propertynames(out)
@@ -116,8 +144,13 @@ function calculate_adecuacy_gcd_KPI(gcdi_KPI)
         :input_load_MWh => :E_input_load_MWh, :input_RES_production_MWh => :E_input_RES_production_MWh, :thermal_production_MWh => :E_thermal_production_MWh,
         :input_load_uc_MWh => :input_load_uc_MWh, # manually cheked that the average gives back the original value
         :nonRES_nonThermal_production_MWh => :E_nonRES_nonThermal_production_MWh, :storage_charge_MWh => :E_storage_charge_MWh, :storage_discharge_MWh => :E_storage_discharge_MWh, :storage_net_charge_MWh => :E_storage_net_charge_MWh, :SOE_0_MWh => :SOE_0_MWh, :SOE_T_MWh => :E_SOE_T_MWh, :net_SOE_MWh => :E_net_SOE_MWh,
-        :objective_value => :EOV, :objective_value_uc => :OV_uc, :OPEX => :EOPEX, :OPEX_uc => :OPEX_uc, :redispatch_cost => :E_redispatch_cost, :LOL_cost => :EENS_cost, :LGEN_cost => :ELGEN_cost, :reserve_cost => :E_reserve_cost, :reserve_cost_uc => :reserve_cost_uc,
-        :slack_reserve_up_cost => :E_slack_reserve_up_cost, :slack_reserve_down_cost => :E_slack_reserve_down_cost, :slack_reserve_up_cost_uc => :slack_reserve_up_cost_uc, :slack_reserve_down_cost_uc => :slack_reserve_down_cost_uc,
+        :reserve_up_uc_MWh => :reserve_up_uc_MWh, :reserve_down_uc_MWh => :reserve_down_uc_MWh, :slack_reserve_up_uc_MWh => :slack_reserve_up_uc_MWh, :slack_reserve_down_uc_MWh => :slack_reserve_down_uc_MWh,
+        :required_reserve_up_uc_MWh => :required_reserve_up_uc_MWh, :required_reserve_down_uc_MWh => :required_reserve_down_uc_MWh,
+        :energy_reserve_up_uc_MWh => :energy_reserve_up_uc_MWh, :energy_reserve_down_uc_MWh => :energy_reserve_down_uc_MWh, :slack_energy_reserve_up_uc_MWh => :slack_energy_reserve_up_uc_MWh, :slack_energy_reserve_down_uc_MWh => :slack_energy_reserve_down_uc_MWh, 
+        :required_energy_reserve_up_uc_MWh => :required_energy_reserve_up_uc_MWh, :required_energy_reserve_down_uc_MWh => :required_energy_reserve_down_uc_MWh,
+        :objective_value => :EOV, :objective_value_uc => :OV_uc, :OPEX => :EOPEX, :OPEX_uc => :OPEX_uc, :redispatch_cost => :E_redispatch_cost, :LOL_cost => :EENS_cost, :LGEN_cost => :ELGEN_cost,
+        :reserve_cost_uc => :reserve_cost_uc, :slack_reserve_up_cost_uc => :slack_reserve_up_cost_uc, :slack_reserve_down_cost_uc => :slack_reserve_down_cost_uc,
+        :energy_reserve_cost_uc => :energy_reserve_cost_uc, :slack_energy_reserve_up_cost_uc => :slack_energy_reserve_up_cost_uc, :slack_energy_reserve_down_cost_uc => :slack_energy_reserve_down_cost_uc,
         :start_cost => :E_start_cost, :fixed_cost => :E_fixed_cost, :production_cost => :E_production_cost, 
         :avg_marginal_energy_price_MU_MWh => :E_avg_marginal_energy_price_MU_MWh, :avg_marginal_energy_price_uc_MU_MWh => :avg_marginal_energy_price_uc_MU_MWh,
         :avg_marginal_reserve_up_price_uc_MU_MWh => :avg_marginal_reserve_up_price_uc_MU_MWh, :avg_marginal_reserve_down_price_uc_MU_MWh => :avg_marginal_reserve_down_price_uc_MU_MWh,
@@ -132,7 +165,7 @@ function calculate_adecuacy_gcd_KPI(gcdi_KPI)
 end
 
 function calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by)
-    keys_objective_value = intersect([:production_cost, :fixed_cost, :start_cost, :LOL_cost, :LGEN_cost, :reserve_cost, :slack_reserve_up_cost, :slack_reserve_down_cost], propertynames(s_ed.objective_function))
+    keys_objective_value = intersect([:production_cost, :fixed_cost, :start_cost, :LOL_cost, :LGEN_cost, :reserve_cost, :slack_reserve_up_cost, :slack_reserve_down_cost,:energy_reserve_cost, :slack_energy_reserve_up_cost, :slack_energy_reserve_down_cost], propertynames(s_ed.objective_function))
     out = combine(groupby(s_ed.objective_function, group_by), keys_objective_value .=> (x -> sum(skipmissing(x))), renamecols = false)
     out.OPEX = out.production_cost .+ out.fixed_cost .+ out.start_cost # this OPEX definition corresponds to model[:OPEX]
     out.objective_value = sum(eachcol(out[:,keys_objective_value]))
