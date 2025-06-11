@@ -507,7 +507,7 @@ function get_enriched_objective_value(enriched_solution, gen_df, storage, parame
         cost = vcat(cost, storage_cost, cols=:union)
     end
     if :reserve in keys(enriched_solution)
-        fields_to_remove = [:reserve_up_MW, :reserve_down_MW, :full_id]
+        fields_to_remove = [:reserve_up_MW, :reserve_down_MW, :full_id, :slack_reserve_up_MW, :slack_reserve_down_MW]
         reserve_cost = copy(enriched_solution[:reserve])
         reserve_cost.reserve_cost = (reserve_cost.reserve_up_MW + reserve_cost.reserve_down_MW)*parameters.VRESERVE
         min_hour = minimum(reserve_cost.hour)
@@ -515,7 +515,7 @@ function get_enriched_objective_value(enriched_solution, gen_df, storage, parame
             [:slack_reserve_up_MW, :hour] => ((x,y) -> x.*parameters.VSRESUP[y[1]-min_hour+1]) => :slack_reserve_up_cost, # hour-wise multiplication
             [:slack_reserve_down_MW, :hour] => ((x,y) -> x.*parameters.VSRESDN[y[1]-min_hour+1]) => :slack_reserve_down_cost # hour-wise multiplication
          )
-        select!(reserve_cost, Not(fields_to_remove)) 
+        select!(reserve_cost, Not(fields_to_remove))
         cost = vcat(cost, reserve_cost, cols=:union)
     end
 
