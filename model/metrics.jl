@@ -178,14 +178,12 @@ function calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by)
         out.OPEX_uc = out.production_cost_uc .+ out.fixed_cost_uc .+ out.start_cost_uc
         out.objective_value_uc = out.OPEX_uc
         if hasproperty(out, :reserve_cost_uc)
-           
             out.objective_value_uc .+= out.reserve_cost_uc
         end 
         if hasproperty(out, :energy_reserve_cost_uc)
             out.objective_value_uc .+= out.energy_reserve_cost_uc 
         end
         if hasproperty(out, :slack_reserve_up_cost_uc) && hasproperty(out, :slack_reserve_down_cost_uc)
-            @infiltrate
             out.objective_value_uc .+= (out.slack_reserve_up_cost_uc .+ out.slack_reserve_down_cost_uc)
         end
         if hasproperty(out, :slack_energy_reserve_up_cost_uc) && hasproperty(out, :slack_energy_reserve_down_cost_uc)

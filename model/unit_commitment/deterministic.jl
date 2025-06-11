@@ -386,10 +386,10 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
             add_envelope_constraints(model, loads, storage, μ_up, μ_dn, naive_envelopes)
         end
         if storage_reserve_repartition >=0
-            # @warn "Storage reserve repartition is currently disabled. No constraints are being added."
+            @warn "Storage reserve repartition is currently disabled. No constraints are being added."
             # WARNING: storage reserve repartition disabled
             # println("Adding storage reserve repartition...")
-            add_storage_reserve_repartition(model, reserve, storage_reserve_repartition, sets)
+            # add_storage_reserve_repartition(model, reserve, storage_reserve_repartition, sets)
         end 
     end
     # (4) Overall reserve requirements

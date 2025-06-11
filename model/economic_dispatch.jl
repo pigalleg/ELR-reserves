@@ -78,7 +78,7 @@ function construct_economic_dispatch(uc, time, constrain_SOE_by_envelopes::Bool,
 end
 
 
-function constrain_decision_variables(model, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool, variables_to_constrain = [GEN, CH, DIS], variables_to_fix =  [COMMIT, START, SHUT,:RESUP, :RESDN, :ERESUP, :ERESDN])
+function constrain_decision_variables(model, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool, variables_to_constrain = [GEN, CH, DIS], variables_to_fix =  [COMMIT, START, SHUT,:RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP])
     function get_reserves_variables(model, prepend = false)
         prepend_E(symbol_name, prepend) = !prepend ? symbol_name : Symbol("E"*string(symbol_name))    
         return Dict(
