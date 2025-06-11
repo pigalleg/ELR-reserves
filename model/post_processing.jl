@@ -544,6 +544,7 @@ function get_enriched_objective_value(enriched_solution, gen_df, storage, parame
         cost = vcat(cost, losses_cost, cols=:union) 
     end
     check_cost_consistency()
+    # @warn "Cost consistency not checked" 
     return cost
 end
 
