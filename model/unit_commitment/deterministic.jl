@@ -413,13 +413,13 @@ function add_storage_reserve_repartition(model, reserve, storage_reserve_reparti
         sum(RESUP[s,t] for s in S, t in T) == storage_reserve_repartition * (sum(reserve[:,:reserve_up_MW]) - sum(SRESUP[t] for t in T)) 
     )
     @constraint(model, ResDnStorageRepartition,
-        sum(RESDN[s,t] for s in S, t in T) == storage_reserve_repartition * (sum(reserve[:,:reserve_down_MW])- sum(SRESUP[t] for t in T))
+        sum(RESDN[s,t] for s in S, t in T) == storage_reserve_repartition * (sum(reserve[:,:reserve_down_MW])- sum(SRESDN[t] for t in T))
     )
     @constraint(model, ResUpNotStorageRepartition,
         sum(RESUP[s,t] for s in not_S, t in T) == (1-storage_reserve_repartition) * (sum(reserve[:,:reserve_up_MW]) - sum(SRESUP[t] for t in T))
     )
     @constraint(model, ResDnNotStorageRepartition,
-        sum(RESDN[s,t] for s in not_S, t in T) == (1-storage_reserve_repartition) * (sum(reserve[:,:reserve_down_MW])- sum(SRESUP[t] for t in T))
+        sum(RESDN[s,t] for s in not_S, t in T) == (1-storage_reserve_repartition) * (sum(reserve[:,:reserve_down_MW])- sum(SRESDN[t] for t in T))
     )
 end
 
