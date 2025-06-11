@@ -386,18 +386,18 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
             add_envelope_constraints(model, loads, storage, μ_up, μ_dn, naive_envelopes)
         end
         if storage_reserve_repartition >=0
-            # @warn "Storage reserve repartition is currently disabled. No constraints are being added."
+            @warn "Storage reserve repartition is currently disabled. No constraints are being added."
             # WARNING: storage reserve repartition disabled
             # println("Adding storage reserve repartition...")
-            add_storage_reserve_repartition(model, reserve, storage_reserve_repartition, sets)
+            # add_storage_reserve_repartition(model, reserve, storage_reserve_repartition, sets)
         end 
     end
     # (4) Overall reserve requirements
     @constraint(model, ResUpRequirement[t in T],
-        sum(RESUP[g,t] for g in G_reserve) + SRESUP[t] == RRESUP[t]
+        sum(RESUP[g,t] for g in G_reserve) + SRESUP[t] >= RRESUP[t]
     )
     @constraint(model, ResDnRequirement[t in T],
-        sum(RESDN[g,t] for g in G_reserve) + SRESDN[t] == RRESDN[t]
+        sum(RESDN[g,t] for g in G_reserve) + SRESDN[t] >= RRESDN[t]
     )
 end
 
@@ -629,11 +629,11 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
 
     # (4) Overall reserve requirements
     @constraint(model, EnergyResUpRequirement[j in T, t in T; j <= t],
-        sum(ERESUP[i,j,t] for i in G_reserve) + SERESUP[j,t] == RERESUP[j,t]
+        sum(ERESUP[i,j,t] for i in G_reserve) + SERESUP[j,t] >= RERESUP[j,t]
     )
  
     @constraint(model, EnergyResDnRequirement[j in T, t in T; j <= t],
-        sum(ERESDN[i,j,t] for i in G_reserve) + SERESDN[j,t] == RERESDN[j,t]
+        sum(ERESDN[i,j,t] for i in G_reserve) + SERESDN[j,t] >= RERESDN[j,t]
     )
 
 end
