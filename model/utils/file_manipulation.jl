@@ -101,10 +101,10 @@ function main_ESA()
 end
 
 function main_RTS()
-    days = [1, 2, 3, 4]
-    from_solution = "RTS-GMLC_v1.0s"
-    mus = [0.62,0.48,0.6,0.73]
-    to_input = "RTS-GMLC_v1.0"
+    days = [1, 2, 3]
+    from_solution = "RTS-GMLC_v5.0s"
+    mus = [0.62,0.48,0.6]
+    to_input = "RTS-GMLC_v1.1"
     for (mu, day) in zip(mus, days)
         update_final_energy_proportion(false, from_solution = from_solution, day = day, mu = mu, to_input = to_input)
     end
