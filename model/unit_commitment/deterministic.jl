@@ -485,6 +485,7 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
     #TODO: include diagonal ramp reserves
     G_thermal = sets.G_thermal
     T = sets.T
+    T_red = sets.T_red
     GEN = model[:GEN]
     COMMIT = model[:COMMIT]
     VSRESUP = convert_to_indexed_vector(VSRESUP, T)
@@ -530,20 +531,28 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
     )
     @constraint(model, EnergyResDownThermal[g in G_thermal, j in T, t in T; j <= t],
         ERESDN[g, j, t] <= sum(
-            GEN[g,tt] - COMMIT[g,tt]*gen_df[gen_df.r_id .==g,:existing_cap_mw][1]*gen_df[gen_df.r_id .==g,:min_power][1] for tt in T if (tt >= j)&(tt <= t) #TODO: calculation should be done at input file
+            GEN[g,tt] - COMMIT[g,tt]*gen_df[gen_df.r_id .==g,:existing_cap_mw][1]*gen_df[gen_df.r_id .==g,:min_power][1] for tt in T if (tt >= j)&(tt <= t)
         )
     )
     # (2) Reserves limited by ramp rates
     @constraint(model, EnergyResUpRamp[g in G_thermal, j in T, t in T; j <= t],
         ERESUP[g, j, t] <=  sum(
-            gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1] for tt in T if (tt >= j)&(tt <= t) #TODO: calculation should be done at input file
+            gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1] for tt in T if (tt >= j)&(tt <= t)
         )
     )
     @constraint(model, EnergyResDnRamp[g in G_thermal, j in T, t in T; j <= t],
         ERESDN[g, j, t] <=  sum(
-            gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1] for tt in T if (tt >= j)&(tt <= t) #TODO: calculation should be done at input file
+            gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1] for tt in T if (tt >= j)&(tt <= t)
         )
     )
+    # (3) Robust ramp constraints
+    @constraint(model, EnergyResUpRampRobust[g in G_thermal, j in T_red, t in T_red; j <= t],
+        GEN[g,t+1] + ERESUP[g,t+1,t+1] - (GEN[g,t] - ERESDN[g,t,t]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
+    )
+    @constraint(model, EnergyResDnRampRobust[g in G_thermal, j in T_red, t in T_red; j <= t],
+        GEN[g,t] + ERESUP[g,t,t] - (GEN[g,t+1] - ERESDN[g,t+1,t+1]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
+    )
+
     if !thermal_reserve
         for (g,j,t) in [(g,j,t) for g in G_thermal, j in T, t in T if j <= t]
             fix(ERESUP[g,j,t], 0.0, force = true)
