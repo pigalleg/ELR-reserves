@@ -13,7 +13,9 @@ ITERATION = :iteration
 DEMAND = :demand
 NB_ITERATIONS = 10000
 
-
+function get_variable_base_name(variable)
+    return Symbol(match(r"([A-z]+)\[", name(first(variable)))[1])
+end
 
 function get_multipliers(model)
     CH = model[:CH]
@@ -79,6 +81,14 @@ end
 
 
 function constrain_decision_variables(model, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool, variables_to_constrain = [GEN, CH, DIS], variables_to_fix =  [COMMIT, START, SHUT,:RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP])
+    # This function will fixes the following decision variables :COMMIT, :START, :SHUT, :RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP
+    # If constrain_dispatch = true, it constraints the dispatch variables (up to three: :GEN, :CH and :DIS) according to the reserve procured at UC stage.
+    # Variables that do not have a reserve or energy reserve element associated will be fixed to their value at UC stage.
+    # If constrain_dispatch = false, units providing reserve or energy reserve will not have their dispatched constrained, but not providing reserves will have their dispatch fixed to the value at UC stage.
+    # If bidirectional_storage_reserve = true, it will consider that the reserve is provided by the storage unit in both charging modes.
+    # If constrain_SOE_by_envelopes is true, it will add SOE envelopes for SOE.
+    # It will also constrain variables in variables_to_constrain according to the reserve procured at UC stage.
+    # If remove_variables_from_objective, it will remove the fixed decision variables from the objective function
     function get_reserves_variables(model, prepend = false)
         prepend_E(symbol_name, prepend) = !prepend ? symbol_name : Symbol("E"*string(symbol_name))    
         return Dict(
@@ -102,21 +112,13 @@ function constrain_decision_variables(model, constrain_SOE_by_envelopes::Bool, c
         # envelopes for ED
         E_SOEUP_value, E_SOEDN_value = generate_envelopes(model) # values extraction
     end
+    constrain_by_energy = haskey(model, :ERESUP) # determines whether reserves or energy reserves
+    variables_to_constrain =  [(model[var], value.(model[var])) for var in variables_to_constrain] # values extraction
+    variables_from_reserve = get_reserves_variables(model, constrain_by_energy) # values extraction
     if constrain_dispatch # assumes either ERESUP or RESUP exists
-        constrain_by_energy = haskey(model, :ERESUP) # determines whether reserves or energy reserves
-        variables_to_constrain =  [(model[var], value.(model[var])) for var in variables_to_constrain] # values extraction
-        variables_from_reserve = get_reserves_variables(model, constrain_by_energy) # values extraction
         constrain_dispatch_variables_according_to_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; variables_from_reserve...)
-        # μ_up, μ_dn = get_multipliers(model)
-        # if !constrain_dispatch_by_multipliers #TODO: deprecated
-        #     μ_up = ones(length(μ_up), 1)
-        #     μ_dn = ones(length(μ_dn), 1)
-        # end
-        # get_reserves(model)
-        
-        # variable extractions must be executeed before modification of the model
-       
     end
+    constraint_dispatch_variables_with_no_reserve(bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; variables_from_reserve...) # By default, units not offering reserve will have their dispatch fixed.
     if constrain_SOE_by_envelopes
         constrain_SOE_to_envelopes(model, E_SOEUP_value, E_SOEDN_value)
         add_envelopes_ED(model, E_SOEUP_value, E_SOEDN_value) # to recover it as output
@@ -124,16 +126,48 @@ function constrain_decision_variables(model, constrain_SOE_by_envelopes::Bool, c
     fix_decision_variables(model, variables_to_fix, remove_variables_from_objective)
 end
 
-function constrain_dispatch_variables_according_to_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; kwargs...)
-    # Dispatch constrained based on the procured reserve at UC stage
-    # Function fixes up to three variable types: :GEN, :CH and :DIS
-    function get_variable_base_name(variable)
-        return Symbol(match(r"([A-z]+)\[", name(first(variable)))[1])
+function constraint_dispatch_variables_with_no_reserve(bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; kwargs...)
+    function fix_variables_to_value(var, var_value, res_vars, constrain_by_energy)
+        G = [constrain_by_energy ? [g for (g,j,t) in eachindex(res_var)] : axes(res_var)[1] for res_var in res_vars] # We take the set of assets that have reserve or energy reserve (res_vars) procured
+        G = reduce(intersect, union(G, [axes(var)[1]])) # We also intersect with the set of assets belongign to var
+        G_to_fix = setdiff(axes(var)[1], G)
+        for key in collect(keys(var)) if key.I[1] in G_to_fix
+                fix(var[key], var_value[key], force = true) # force is needed because the variable has bounds defined.
+            end
+        end
     end
 
+    if bidirectional_storage_reserve
+        gen_logic_group = [GEN]
+        dis_logic_group = [DIS]
+        ch_logic_group = [CH]
+        ch_logic_group_2 = []
+    else
+        gen_logic_group = [GEN, DIS]
+        dis_logic_group = []
+        ch_logic_group = []
+        ch_logic_group_2 = [CH]
+    end
+    for (var, var_value) in variables_to_constrain
+        if get_variable_base_name(var) in gen_logic_group
+            fix_variables_to_value(var, var_value, [kwargs[:res_up_var], kwargs[:res_dn_var]], constrain_by_energy)
+        elseif get_variable_base_name(var) in dis_logic_group
+            fix_variables_to_value(var, var_value, [kwargs[:res_up_dis_var], kwargs[:res_dn_dis_var]], constrain_by_energy)
+        elseif get_variable_base_name(var) in ch_logic_group
+            fix_variables_to_value(var, var_value, [kwargs[:res_dn_ch_var], kwargs[:res_up_ch_var]], constrain_by_energy)
+        elseif get_variable_base_name(var) in ch_logic_group_2
+            fix_variables_to_value(var, var_value, [kwargs[:res_dn_var], kwargs[:res_up_var]], constrain_by_energy)
+        end 
+    end
+end
 
+function constrain_dispatch_variables_according_to_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; kwargs...)
+    # Dispatch constrained based on the procured reserve or energy reserve at the UC stage
+    # Function fixes up to three variable types: :GEN, :CH and :DIS
+    # If Constrain_by_energy= true, integral of redispatch within [j,t] needs to be within the energy reserve. Otherwise, constraints are pointwise.
 
-    function constrain_production_variables(var, var_value, res_up_var, res_up_var_value, constrain_by_energy; lower_bound = false) 
+    function constrain_production_variables(var, var_value, res_up_var, res_up_var_value, constrain_by_energy; lower_bound = false)
+        # This same function is used to constraints :GEN, :CH and :DIS variables 
         # G = intersect(axes(res_up_var)[1], axes(var)[1])
         # T = intersect(axes(res_up_var)[2], axes(var)[2])
         T = axes(var)[2]
@@ -161,13 +195,15 @@ function constrain_dispatch_variables_according_to_reserve(model, bidirectional_
                 end
             end
         end
-        # By default, units not offering reserve will have their dispatch fixed.
-        G_to_fix = setdiff(axes(var)[1], G)
-        for key in collect(keys(var)) if key.I[1] in G_to_fix
-                fix(var[key], var_value[key], force = true) # force is needed because the variable has bounds defined.
-            end
-        end
+        
+        # # By default, units not offering reserve will have their dispatch fixed.
+        # G_to_fix = setdiff(axes(var)[1], G)
+        # for key in collect(keys(var)) if key.I[1] in G_to_fix
+        #         fix(var[key], var_value[key], force = true) # force is needed because the variable has bounds defined.
+        #     end
+        # end
     end
+
     println("Constraining dispatch to procured reserve...")
     if bidirectional_storage_reserve
         gen_logic_group = [GEN]

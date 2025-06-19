@@ -252,7 +252,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, configuration
     # μs =  get(kwargs, :μs, nothing)
     add_config = Dict(
         :max_iterations => get(kwargs, :max_iterations, 100),
-        # :constrain_dispatch => get(kwargs, :constrain_dispatch, true),
+        :constrain_dispatch => get(kwargs, :constrain_dispatch, true),
         :VRESERVE => get(kwargs, :VRESERVE, 1e-6),
         # :remove_variables_from_objective => get(kwargs, :remove_variables_from_objective, false),
         # :VLOL => get(kwargs, :VLOL, 1e4),
