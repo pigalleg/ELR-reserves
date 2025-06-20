@@ -188,12 +188,9 @@ function add_ramp_constraints(model, gen_df, sets)
     T = sets.T
     T_red = sets.T_red
 
-    # G, G_thermal, G_nonthermal, __, ___, ____ = create_generators_sets(gen_df)
-
     GEN = model[:GEN]
     COMMIT = model[:COMMIT]
-    # T = axes(GEN)[2]
-    # T_red = T[1:end-1]
+
     # New auxiliary variable GENAUX for generation above the minimum output level
     @variable(model, GENAUX[G_thermal, T] >= 0)
     
@@ -224,6 +221,48 @@ function add_ramp_constraints(model, gen_df, sets)
         GEN[g,t] - GEN[g,t+1] <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
     )
 end
+
+function add_thermal_reserve_power_constraints(model, gen_df, sets)
+    G_thermal = sets.G_thermal
+    T = sets.T
+    T_red = sets.T_red
+    GEN = model[:GEN]
+    COMMIT = model[:COMMIT]
+    if haskey(model, :RESUP) && haskey(model, :RESDN)
+        RESUP = model[:RESUP]
+        RESDN = model[:RESDN]
+    else
+        @variables(model, begin
+            RESUP[G_thermal, T] >= 0 # reserve up offered by thermal generators
+            RESDN[G_thermal, T] >= 0 # reserve down offered by thermal generators
+        end)
+    end
+    
+    # (1) Reserves limited by committed capacity of generator
+    @constraint(model, ResUpThermal[g in G_thermal, t in T],
+        RESUP[g,t] <= COMMIT[g,t]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1] - GEN[g,t]
+    )
+    @constraint(model, ResDnThermal[g in G_thermal, t in T],
+        RESDN[g,t] <= GEN[g,t] - COMMIT[g,t]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:min_power][1]
+    ) #TODO: calculation should be done at input file
+    if haskey(model, :RampUp_thermal) # adding only if ramp constraints are present
+        # (2) Reserves limited by ramp rates #TODO: check if this restrictions make sense
+        @constraint(model, ResUpRamp[g in G_thermal, t in T],
+            RESUP[g,t] <=  gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
+        )
+        @constraint(model, ResDnRamp[g in G_thermal, t in T],
+            RESDN[g,t] <=  gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
+        )
+        # (3) Robust ramp constraints
+        @constraint(model, ResUpRampRobust[g in G_thermal, t in T_red],
+            GEN[g,t+1] + RESUP[g,t+1] - (GEN[g,t] - RESDN[g,t]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
+        )
+        @constraint(model, ResDnRampRobust[g in G_thermal, t in T_red],
+            GEN[g,t] + RESUP[g,t] - (GEN[g,t+1] - RESDN[g,t+1]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
+        )
+    end
+end
+
 
 function add_storage_reserve_power_constraints(model, storage, sets)
     T = sets.T
@@ -301,37 +340,14 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
     @expression(model, ReservePenalizationCost,
         VRESERVE*sum(RESUP[g,t] + RESDN[g,t] for g in G_reserve, t in T)
     )
-
     @expression(model, ReserveSlackPenalizationCost,
         sum(SRESUP[t]*VSRESUP[t] for t in T) + sum(SRESDN[t]*VSRESDN[t] for t in T)
     )
-
     @objective(model, Min, 
         objective_function(model) + model[:ReservePenalizationCost] + model[:ReserveSlackPenalizationCost]
     )
     
-    # (1) Reserves limited by committed capacity of generator
-    @constraint(model, ResUpThermal[g in G_thermal, t in T],
-        RESUP[g,t] <= COMMIT[g,t]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1] - GEN[g,t]
-    )
-    @constraint(model, ResDnThermal[g in G_thermal, t in T],
-        RESDN[g,t] <= GEN[g,t] - COMMIT[g,t]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:min_power][1]
-    ) #TODO: calculation should be done at input file
-    
-    # (2) Reserves limited by ramp rates #TODO: check if this restrictions make sense
-    @constraint(model, ResUpRamp[g in G_thermal, t in T],
-        RESUP[g,t] <=  gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
-    )
-    @constraint(model, ResDnRamp[g in G_thermal, t in T],
-        RESDN[g,t] <=  gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
-    )
-    # (3) Robust ramp constraints
-    @constraint(model, ResUpRampRobust[g in G_thermal, t in T_red],
-        GEN[g,t+1] + RESUP[g,t+1] - (GEN[g,t] - RESDN[g,t]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
-    )
-    @constraint(model, ResDnRampRobust[g in G_thermal, t in T_red],
-        GEN[g,t] + RESUP[g,t] - (GEN[g,t+1] - RESDN[g,t+1]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
-    )
+    add_thermal_reserve_power_constraints(model, gen_df, sets)
     if !thermal_reserve
         for g in G_thermal, t in T
             fix(RESUP[g,t], 0.0, force = true)
@@ -350,6 +366,7 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
         RESDNDIS = model[:RESDNDIS]
         RRESUP = model[:RRESUP]
         RRESDN = model[:RRESDN]
+
         # Energy constraints # important for μ=0 ?
         # @constraint(model, ResUpStorageDisMax[s in S, t in T],
         #     RESUPDIS[s,t] <= (SOE[s,t]- storage[storage.r_id .== s,:min_energy_mwh][1])*storage[storage.r_id .== s,:discharge_efficiency][1] #TODO: include delta_T
@@ -392,6 +409,7 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
             # add_storage_reserve_repartition(model, reserve, storage_reserve_repartition, sets)
         end 
     end
+
     # (4) Overall reserve requirements
     @constraint(model, ResUpRequirement[t in T],
         sum(RESUP[g,t] for g in G_reserve) + SRESUP[t] >= RRESUP[t]
@@ -523,34 +541,16 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
         objective_function(model) + model[:EnergyReservePenalizationCost] + model[:EnergyReserveSlackPenalizationCost]
     )
 
+    add_thermal_reserve_power_constraints(model, gen_df, sets)
+    RESUP = model[:RESUP]
+    RESDN = model[:RESDN]
+
     # (1) Reserves limited by committed capacity of generator
     @constraint(model, EnergyResUpThermal[g in G_thermal, j in T, t in T; j <= t],
-        ERESUP[g, j, t] <= sum(
-            COMMIT[g,tt]*gen_df[gen_df.r_id .== g, :existing_cap_mw][1] - GEN[g,tt] for tt in T if (tt >= j)&(tt <= t)
-        )
+        ERESUP[g, j, t] <= sum(RESUP[g, tt] for tt in T if (tt >= j)&(tt <= t))
     )
     @constraint(model, EnergyResDownThermal[g in G_thermal, j in T, t in T; j <= t],
-        ERESDN[g, j, t] <= sum(
-            GEN[g,tt] - COMMIT[g,tt]*gen_df[gen_df.r_id .==g,:existing_cap_mw][1]*gen_df[gen_df.r_id .==g,:min_power][1] for tt in T if (tt >= j)&(tt <= t)
-        )
-    )
-    # (2) Reserves limited by ramp rates
-    @constraint(model, EnergyResUpRamp[g in G_thermal, j in T, t in T; j <= t],
-        ERESUP[g, j, t] <=  sum(
-            gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1] for tt in T if (tt >= j)&(tt <= t)
-        )
-    )
-    @constraint(model, EnergyResDnRamp[g in G_thermal, j in T, t in T; j <= t],
-        ERESDN[g, j, t] <=  sum(
-            gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1] for tt in T if (tt >= j)&(tt <= t)
-        )
-    )
-    # (3) Robust ramp constraints
-    @constraint(model, EnergyResUpRampRobust[g in G_thermal, j in T_red, t in T_red; j <= t],
-        GEN[g,t+1] + ERESUP[g,t+1,t+1] - (GEN[g,t] - ERESDN[g,t,t]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
-    )
-    @constraint(model, EnergyResDnRampRobust[g in G_thermal, j in T_red, t in T_red; j <= t],
-        GEN[g,t] + ERESUP[g,t,t] - (GEN[g,t+1] - ERESDN[g,t+1,t+1]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
+        ERESDN[g, j, t] <= sum(RESDN[g, tt] for tt in T if (tt >= j)&(tt <= t))
     )
 
     if !thermal_reserve
@@ -579,24 +579,16 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
 
         # Power constraints 
         @constraint(model, EnergyResUpStorageDisCapacityMax[s in S, j in T, t in T; j <= t],
-            ERESUPDIS[s,j,t] <= sum(
-                 RESUPDIS[s,tt] for tt in T if (tt >= j)&(tt <= t)
-            )
+            ERESUPDIS[s,j,t] <= sum(RESUPDIS[s,tt] for tt in T if (tt >= j)&(tt <= t))
         )
         @constraint(model, EnergyResUpStorageChCapacityMax[s in S, j in T, t in T; j <= t],
-            ERESUPCH[s,j,t] <= sum(
-                RESUPCH[s,tt] for tt in T if (tt >= j)&(tt <= t)
-            )
+            ERESUPCH[s,j,t] <= sum(RESUPCH[s,tt] for tt in T if (tt >= j)&(tt <= t))
         )
         @constraint(model, EnergyResDownStorageChCapacityMax[s in S, j in T, t in T; j <= t],
-            ERESDNCH[s,j,t] <= sum(
-                RESDNCH[s,tt] for tt in T if (tt >= j)&(tt <= t)
-            )
+            ERESDNCH[s,j,t] <= sum(RESDNCH[s,tt] for tt in T if (tt >= j)&(tt <= t))
         )
         @constraint(model, EnergyResDownStorageDisCapacityMax[s in S, j in T, t in T; j <= t],
-            ERESDNDIS[s,j,t] <= sum(
-                RESDNDIS[s,tt] for tt in T if (tt >= j)&(tt <= t)
-            )
+            ERESDNDIS[s,j,t] <= sum(RESDNDIS[s,tt] for tt in T if (tt >= j)&(tt <= t))
         )
 
         # Energy constraints

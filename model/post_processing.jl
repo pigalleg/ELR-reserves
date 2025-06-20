@@ -168,10 +168,11 @@ function enrich_dfs(solution, gen_df, loads, gen_variable, storage, parameters, 
         out[:storage] = get_enriched_storage(solution, data)
         out[:storage_parameters] = get_storage_parameters(storage)
     end
-    if haskey(solution, :RESUP) & haskey(solution, :RESDN)
+    # energy_reserve solutions have :RESUP and :RESDN so we need to extra check
+    if haskey(solution, :RESUP) && haskey(solution, :RESDN) && (!haskey(solution, :ERESUP) || !haskey(solution, :ERESDN)) # UC+ED
         out[:reserve] =  get_enriched_reserve(solution, data, parameters.FeasibilityTol)
     end
-    if haskey(solution, :ERESUP) & haskey(solution, :ERESDN)
+    if haskey(solution, :ERESUP) && haskey(solution, :ERESDN)
         out[:energy_reserve] =  get_enriched_energy_reserve(solution, data, parameters.FeasibilityTol)
     end
     if haskey(solution, :SupplyDemandBalance_dual)
