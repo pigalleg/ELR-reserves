@@ -101,7 +101,7 @@ function get_solution_variables(model, stochastic)
 end
 
 function get_solution_dual_variables(model, stochastic) # output's keys are of the format "$(constraint_name_)_dual"
-    constraints_to_get = [:SupplyDemandBalance, :ResUpRequirement, :ResDnRequirement, :EnergyResUpRequirement, :EnergyResDnRequirement, :SOEUPMax, :SOEDNMax, :SOEUPMin, :SOEDNMin, :ESOEUPMax, :ESOEDNMax, :ESOEUPMin, :ESOEDNMin] #TODO: :SOEFinalUp, :SOEFinalDn
+    constraints_to_get = [:SupplyDemandBalance, :ResUpRequirement, :ResDnRequirement, :EnergyResUpRequirement, :EnergyResDnRequirement, :SOEUPMax, :SOEDNMax, :SOEUPMin, :SOEDNMin, :ESOEUPMax, :ESOEDNMax, :ESOEUPMin, :ESOEDNMin, :RampUp_thermal, :RampDn_thermal, :RampUp_nonthermal, :RampDn_nonthermal] #TODO: :SOEFinalUp, :SOEFinalDn
     if has_duals(model)
         return NamedTuple(Symbol("$(string(k))_dual") => value_to_df(dual.(model[k]), stochastic) for k in intersect(keys(object_dictionary(model)), constraints_to_get))
     else
@@ -229,18 +229,45 @@ function get_enriched_duals(solution)
             on = [:hour, :hour_i]
         )
     end
-    if haskey(solution, :SOEFinalUp_dual) # ED. We assume that SOEFinalDn_dual is present
-        # TODO: implement commented code. The problem right now is how to merge with aux, since aux do not have a r_id field
-        # aux = leftjoin(
-        #     aux,
-        #     innerjoin(
-        #         rename(solution.SOEFinalUp_dual, :value => :dual_SOE_end_up_MU_MW),
-        #         rename(solution.SOEFinalDn_dual, :value => :dual_SOE_end_down_MU_MW),
-        #         on = [:r_id,:hour]),
-        #     on = :hour   
-        # )
-        # aux = sort(aux, :hour)
-    end
+    # If code enters in any of two if statements above, then join_on is [:r_id, :hour] and aux has the field :hour_i
+    
+    # TODO: implement commented code. The problem right now is how to merge with aux, since aux do not have a r_id field. The best strategy might be to generate a fictitious r_id for the system.
+    # if haskey(solution, :RampUp_thermal_dual) && haskey(solution, :RampDn_thermal_dual) # UC. 
+    #     join_on = :r_id in propertynames(aux) ? [:r_id, :hour] : [:hour]
+    #     aux = leftjoin(
+    #         aux,
+    #         innerjoin(
+    #             rename(solution.RampUp_thermal_dual, :value => :dual_ramp_up_thermal_MU_MW),
+    #             rename(solution.RampDn_thermal_dual, :value => :dual_ramp_down_thermal_MU_MW),
+    #             on = [:r_id, :hour]),
+    #         on = join_on, # value with :hour_i will be repeated
+    #     )
+
+    # end
+    # if haskey(solution, :RampUp_nonthermal_dual) && haskey(solution, :RampDn_nonthermal_dual) # UC. 
+    #     join_on = intersect([:r_id, :hour], propertynames(aux))
+    #     aux = leftjoin(
+    #         aux,
+    #         innerjoin(
+    #             rename(solution.RampUp_nonthermal_dual, :value => :dual_ramp_up_nonthermal_MU_MW),
+    #             rename(solution.RampDn_nonthermal_dual, :value => :dual_ramp_down_nonthermal_MU_MW),
+    #             on = [:r_id, :hour]),
+    #         on = join_on,
+    #         matchmissing = :equal
+    #     )   
+    # end
+    # if haskey(solution, :SOEFinalUp_dual) # ED. We assume that SOEFinalDn_dual is present
+    #     join_on = intersect([:r_id, :hour], propertynames(aux))
+    #     aux = leftjoin(
+    #         aux,
+    #         innerjoin(
+    #             rename(solution.SOEFinalUp_dual, :value => :dual_SOE_end_up_MU_MW),
+    #             rename(solution.SOEFinalDn_dual, :value => :dual_SOE_end_down_MU_MW),
+    #             on = [:r_id, :hour]),
+    #         on = join_on  ,
+    #         matchmissing = :equal 
+    #     )
+    # end
     if :hour_i in propertynames(aux) # this is the case of energy reserve duals
         select!(aux, vcat([:hour, :hour_i], setdiff(Symbol.(names(aux)), [:hour, :hour_i]))) # reordering with :hour and :hour_i first
     end
