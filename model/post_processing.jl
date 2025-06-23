@@ -189,25 +189,31 @@ end
 
 
 function get_enriched_duals(solution)
-    aux = rename(solution.SupplyDemandBalance_dual, :value => :dual_supply_demand_balance_MU_MW)
-    if haskey(solution, :ResUpRequirement_dual) # UC+ED. we assume that ResDnRequirement_dual is present
-        aux = innerjoin(aux,
-        rename(solution.ResUpRequirement_dual, :value => :dual_reserve_up_requirement_MU_MW),
-        rename(solution.ResDnRequirement_dual, :value => :dual_reserve_down_requirement_MU_MW),
-        on = :hour,
-        )
+    @infiltrate
+    aux = rename(solution.SupplyDemandBalance_dual, :value => :dual_supply_demand_balance_MU_MW) # UC + SUC
+    aux.r_id .= missing
+    if haskey(solution, :ResUpRequirement_dual) # UC we assume that ResDnRequirement_dual is present
+        aux = outerjoin( # left join also works
+            aux,
+            innerjoin(
+                rename(solution.ResUpRequirement_dual, :value => :dual_reserve_up_requirement_MU_MW),
+                rename(solution.ResDnRequirement_dual, :value => :dual_reserve_down_requirement_MU_MW),
+                on = [:hour]),
+            on = :hour)
+    
     elseif haskey(solution, :EnergyResUpRequirement_dual) && haskey(solution, :EnergyResDnRequirement_dual) # UC. 
-        aux = leftjoin(
+        aux.hour_i = aux.hour
+        aux = outerjoin(
             aux,
             innerjoin(
                 rename(solution.EnergyResUpRequirement_dual, :value => :dual_energy_reserve_up_requirement_MU_MW),
                 rename(solution.EnergyResDnRequirement_dual, :value => :dual_energy_reserve_down_requirement_MU_MW),
                 on = [:hour, :hour_i]),
-            on = :hour, # value with :hour_i will be repeated
-        )
+            on = [:hour, :hour_i])
     end
-    if haskey(solution, :SOEUPMax_dual) && haskey(solution, :SOEDNMax_dual) && haskey(solution, :SOEUPMin_dual) && haskey(solution, :SOEDNMin_dual)
-        aux = leftjoin(
+
+    if haskey(solution, :SOEUPMax_dual) && haskey(solution, :SOEDNMax_dual) && haskey(solution, :SOEUPMin_dual) && haskey(solution, :SOEDNMin_dual) #UC
+        aux = outerjoin(
             aux,
             innerjoin(
                 rename(solution.SOEUPMax_dual, :value => :dual_SOE_up_max_MU_MW),
@@ -215,11 +221,11 @@ function get_enriched_duals(solution)
                 rename(solution.SOEUPMin_dual, :value => :dual_SOE_up_min_MU_MW),
                 rename(solution.SOEDNMin_dual, :value => :dual_SOE_down_min_MU_MW),
                 on = [:r_id, :hour]),
-            on = [:hour]
+            on = [:r_id, :hour],
+            matchmissing = :equal
         )
-    end
-    if haskey(solution, :ESOEUPMax_dual) && haskey(solution, :ESOEDNMax_dual) && haskey(solution, :ESOEUPMin_dual) && haskey(solution, :ESOEDNMin_dual)
-        aux = leftjoin(
+    elseif haskey(solution, :ESOEUPMax_dual) && haskey(solution, :ESOEDNMax_dual) && haskey(solution, :ESOEUPMin_dual) && haskey(solution, :ESOEDNMin_dual) # UC
+        aux = outerjoin(
             aux,
             innerjoin(
                 rename(solution.ESOEUPMax_dual, :value => :dual_ESOE_up_max_MU_MW),
@@ -227,36 +233,35 @@ function get_enriched_duals(solution)
                 rename(solution.ESOEUPMin_dual, :value => :dual_ESOE_up_min_MU_MW),
                 rename(solution.ESOEDNMin_dual, :value => :dual_ESOE_down_min_MU_MW),
                 on = [:r_id, :hour, :hour_i]),
-            on = [:hour, :hour_i]
+            on = [:r_id, :hour,:hour_i],
+            matchmissing = :equal
         )
     end
-    # If code enters in any of two if statements above, then join_on is [:r_id, :hour] and aux has the field :hour_i
-    
-    # TODO: implement commented code. The problem right now is how to merge with aux, since aux do not have a r_id field. The best strategy might be to generate a fictitious r_id for the system.
-    # if haskey(solution, :RampUp_thermal_dual) && haskey(solution, :RampDn_thermal_dual) # UC. 
-    #     join_on = :r_id in propertynames(aux) ? [:r_id, :hour] : [:hour]
-    #     aux = leftjoin(
-    #         aux,
-    #         innerjoin(
-    #             rename(solution.RampUp_thermal_dual, :value => :dual_ramp_up_thermal_MU_MW),
-    #             rename(solution.RampDn_thermal_dual, :value => :dual_ramp_down_thermal_MU_MW),
-    #             on = [:r_id, :hour]),
-    #         on = join_on, # value with :hour_i will be repeated
-    #     )
 
-    # end
-    # if haskey(solution, :RampUp_nonthermal_dual) && haskey(solution, :RampDn_nonthermal_dual) # UC. 
-    #     join_on = intersect([:r_id, :hour], propertynames(aux))
-    #     aux = leftjoin(
-    #         aux,
-    #         innerjoin(
-    #             rename(solution.RampUp_nonthermal_dual, :value => :dual_ramp_up_nonthermal_MU_MW),
-    #             rename(solution.RampDn_nonthermal_dual, :value => :dual_ramp_down_nonthermal_MU_MW),
-    #             on = [:r_id, :hour]),
-    #         on = join_on,
-    #         matchmissing = :equal
-    #     )   
-    # end
+    join_on = intersect([:r_id, :hour, :scenario], propertynames(aux))
+    if haskey(solution, :RampUp_thermal_dual) && haskey(solution, :RampDn_thermal_dual) # UC + ED + SUC
+        aux = outerjoin(
+            aux,
+            innerjoin(
+                rename(solution.RampUp_thermal_dual, :value => :dual_ramp_up_thermal_MU_MW),
+                rename(solution.RampDn_thermal_dual, :value => :dual_ramp_down_thermal_MU_MW),
+                on = join_on),
+            on = join_on,
+            matchmissing = :equal
+        )
+
+    end
+    if haskey(solution, :RampUp_nonthermal_dual) && haskey(solution, :RampDn_nonthermal_dual) #  # UC + ED + SUC.
+        aux = outerjoin(
+            aux,
+            innerjoin(
+                rename(solution.RampUp_nonthermal_dual, :value => :dual_ramp_up_nonthermal_MU_MW),
+                rename(solution.RampDn_nonthermal_dual, :value => :dual_ramp_down_nonthermal_MU_MW),
+                on = join_on),
+            on = join_on,
+            matchmissing = :equal
+        )   
+    end
     # if haskey(solution, :SOEFinalUp_dual) # ED. We assume that SOEFinalDn_dual is present
     #     join_on = intersect([:r_id, :hour], propertynames(aux))
     #     aux = leftjoin(
@@ -272,6 +277,7 @@ function get_enriched_duals(solution)
     if :hour_i in propertynames(aux) # this is the case of energy reserve duals
         select!(aux, vcat([:hour, :hour_i], setdiff(Symbol.(names(aux)), [:hour, :hour_i]))) # reordering with :hour and :hour_i first
     end
+    @infiltrate
     return aux
 end
     

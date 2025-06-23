@@ -547,10 +547,10 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
 
     # (1) Reserves limited by committed capacity of generator
     @constraint(model, EnergyResUpThermal[g in G_thermal, j in T, t in T; j <= t],
-        ERESUP[g, j, t] <= sum(RESUP[g, tt] for tt in T if (tt >= j)&(tt <= t))
+        ERESUP[g,j,t] <= sum(RESUP[g,tt] for tt in T if (tt >= j)&(tt <= t))
     )
     @constraint(model, EnergyResDownThermal[g in G_thermal, j in T, t in T; j <= t],
-        ERESDN[g, j, t] <= sum(RESDN[g, tt] for tt in T if (tt >= j)&(tt <= t))
+        ERESDN[g,j,t] <= sum(RESDN[g,tt] for tt in T if (tt >= j)&(tt <= t))
     )
 
     if !thermal_reserve
@@ -559,7 +559,6 @@ function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::
             fix(ERESDN[g,j,t], 0.0, force = true)
         end
     end
-
     # (3) Storage reserve
     if !isnothing(storage)
         # -- begin -- 
