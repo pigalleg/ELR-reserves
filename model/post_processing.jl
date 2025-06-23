@@ -175,6 +175,7 @@ function enrich_dfs(solution, gen_df, loads, gen_variable, storage, parameters, 
     if haskey(solution, :ERESUP) && haskey(solution, :ERESDN)
         out[:energy_reserve] =  get_enriched_energy_reserve(solution, data, parameters.FeasibilityTol)
     end
+    @infiltrate
     if haskey(solution, :SupplyDemandBalance_dual)
         out[:dual_variables] =  get_enriched_duals(solution)
     end
@@ -189,7 +190,7 @@ end
 
 
 function get_enriched_duals(solution)
-    @infiltrate
+    
     aux = rename(solution.SupplyDemandBalance_dual, :value => :dual_supply_demand_balance_MU_MW) # UC + SUC
     aux.r_id .= missing
     if haskey(solution, :ResUpRequirement_dual) # UC we assume that ResDnRequirement_dual is present
@@ -277,7 +278,6 @@ function get_enriched_duals(solution)
     if :hour_i in propertynames(aux) # this is the case of energy reserve duals
         select!(aux, vcat([:hour, :hour_i], setdiff(Symbol.(names(aux)), [:hour, :hour_i]))) # reordering with :hour and :hour_i first
     end
-    @infiltrate
     return aux
 end
     
