@@ -175,7 +175,6 @@ function enrich_dfs(solution, gen_df, loads, gen_variable, storage, parameters, 
     if haskey(solution, :ERESUP) && haskey(solution, :ERESDN)
         out[:energy_reserve] =  get_enriched_energy_reserve(solution, data, parameters.FeasibilityTol)
     end
-    @infiltrate
     if haskey(solution, :SupplyDemandBalance_dual)
         out[:dual_variables] =  get_enriched_duals(solution)
     end
