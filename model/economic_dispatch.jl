@@ -129,7 +129,7 @@ end
 function constraint_dispatch_variables_with_no_reserve(bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; kwargs...)
     function fix_variables_to_value(var, var_value, res_vars, constrain_by_energy)
         G = [constrain_by_energy ? [g for (g,j,t) in eachindex(res_var)] : axes(res_var)[1] for res_var in res_vars] # We take the set of assets that have reserve or energy reserve (res_vars) procured
-        G = reduce(intersect, union(G, [axes(var)[1]])) # We also intersect with the set of assets belongign to var
+        G = reduce(intersect, union(G, [axes(var)[1]])) # We also intersect with the set of assets belonging to var
         G_to_fix = setdiff(axes(var)[1], G)
         for key in collect(keys(var)) if key.I[1] in G_to_fix
                 fix(var[key], var_value[key], force = true) # force is needed because the variable has bounds defined.
