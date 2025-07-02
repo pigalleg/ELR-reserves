@@ -50,7 +50,8 @@ function construct_economic_dispatch(uc, time, constrain_SOE_by_envelopes::Bool,
     # set_optimizer_attribute(ed, "OutputFlag", 0)
     # set_optimizer_attribute(ed, "MIPGap", get_optimizer_attribute(uc,"MIPGap"))            
     # optimize!(ed)
-    ed = uc # pointer, uc object will change   
+    ed = uc # pointer, uc object will change
+    # set_optimizer_attribute(ed, "TimeLimit", 60.0)    # 60 seconds
     add_envelopes_UC(ed)
     constrain_decision_variables(ed, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain)
     constraint_SOE_final_to_envelopes_UC(ed) # redundant when constrain_SOE_by_envelopes == true
@@ -466,9 +467,11 @@ end
 
 function solve_economic_dispatch_(ed, gen_df, loads, gen_variable; kwargs...)
     print("Solving ED...")
+    set_optimizer_attribute(ed, "TimeLimit", 60.0)
     optimize!(ed)
     if !is_solved_and_feasible(ed)
-        @infiltrate
+        print("model not solved or feasible.")
+        return get_nonfeasbile_model_information(ed)
     end
     if get(kwargs, :save_constraints_status, false) # deprecated
         save_constraints_status(ed, string(get(kwargs, :save_constraints_status_for_demand, nothing)))

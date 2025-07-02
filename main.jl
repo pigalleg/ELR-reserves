@@ -148,8 +148,8 @@ function merge_solutions_df(solution_name, solution_folders, folder_path)
     return solution
 end
 
-function generate_post_processing_KPI_files(folder_path; stochastic = false, folders_to_read_ = nothing, save = true)
-    
+function generate_post_processing_KPI_files(folder_path; stochastic = false, folders_to_read_ = nothing, save = true, chunk_size = 10)
+
     function check(gcdi_KPI_adequacy, gcdi_objective_function_KPI, group_by)
         # Check consistency in objective function
         x = sort(gcdi_KPI_adequacy, group_by)
@@ -166,9 +166,25 @@ function generate_post_processing_KPI_files(folder_path; stochastic = false, fol
         return [arr[i:min(i + chunk_size - 1, end)] for i in 1:chunk_size:length(arr)]
     end
 
+    function vcat_namedtuples(nt_list)
+        keys_all = unique(reduce(vcat, [collect(keys(nt)) for nt in nt_list]))
+        out =  NamedTuple{Tuple(keys_all)}((vcat([get(nt, k, DataFrame()) for nt in nt_list]...) for k in keys_all))
+        return NamedTuple(k => sort(v, :day) for (k, v) in pairs(out)) # ordering by day
+    end
+
     function KPI_df_dict(solution_folders, folder_path, stochastic = false)
+        keys_to_save = [
+            :gcdi_KPI_adequacy,
+            :gcd_KPI_adequacy,
+            # :gcdi_KPI_objective_function,
+            # :gcd_KPI_objective_function
+            # :KPI_reserve,
+            # :gcdi_KPI_reserve,
+            # :gcd_KPI_reserve,
+        ]
+
         println("Calculating KPIS...")
-        out = []
+        aux = []
         # s_uc, s_ed = merge_solutions(solution_folders, folder_path, stochastic) # if stochastic == true, s_ed = nothing
         if !stochastic
             s_uc = merge_solutions_df("s_uc", solution_folders, folder_path)
@@ -177,24 +193,25 @@ function generate_post_processing_KPI_files(folder_path; stochastic = false, fol
             s_uc = nothing
             s_ed = merge_solutions_df("s_suc", solution_folders, folder_path)
 
-        end 
-        group_by =  intersect([:configuration, :day, :iteration, :scenario], propertynames(s_ed.demand)) # used only for checking
-       
-        push!(out, calculate_adecuacy_gcdi_KPI(s_ed, s_uc))
-        # out[:gcdi_KPI_adequacy] = calculate_adecuacy_gcdi_KPI(s_ed, s_uc)
-        push!(out, calculate_adecuacy_gcd_KPI(last(out)))
-        push!(out, calculate_objective_function_gcdi_KPI(s_ed, s_uc,group_by)) # These KPIs are included in adequacy and are therefore not needed
-        # push!(out, calculate_objective_function_gcd_KPI(last(out))) # These KPIs are included in adecuacy and are therefore not needed
-        # calculate_reserve_KPI(s_ed, s_uc)
-        # calculate_reserve_gcdi_KPI(out[:KPI_reserve])
-        # calculate_reserve_gcd_KPI(out[:gcdi_KPI_reserve])
-        check(out[1], out[3], group_by)
-        println("...done)")
-        return out
+        end
 
+        if haskey(s_ed, :demand) # if solutions have converged, then this key should be present
+            group_by =  intersect([:configuration, :day, :iteration, :scenario], propertynames(s_ed.demand)) # used only for checking
+            push!(aux, calculate_adecuacy_gcdi_KPI(s_ed, s_uc))
+            # aux[:gcdi_KPI_adequacy] = calculate_adecuacy_gcdi_KPI(s_ed, s_uc)
+            push!(aux, calculate_adecuacy_gcd_KPI(last(aux)))
+            # push!(aux, calculate_objective_function_gcdi_KPI(s_ed, s_uc,group_by)) # These KPIs are included in adequacy and are therefore not needed
+            # push!(aux, calculate_objective_function_gcd_KPI(last(aux))) # These KPIs are included in adecuacy and are therefore not needed
+            # calculate_reserve_KPI(s_ed, s_uc)
+            # calculate_reserve_gcdi_KPI(aux[:KPI_reserve])
+            # calculate_reserve_gcd_KPI(aux[:gcdi_KPI_reserve])
+            check(aux[1], calculate_objective_function_gcdi_KPI(s_ed, s_uc,group_by), group_by)
+            println("...done)")
+            return NamedTuple(keys_to_save .=> aux)
+        else
+            return NamedTuple(keys_to_save .=> [DataFrame(), DataFrame()])
+        end
     end
-    chunk_size = 1
-    values = [[],[],[],[],[]]
 
     folders_to_read = last.(splitpath.(filter(isdir, readdir(folder_path; join = true))))
     out_name = "all"
@@ -202,21 +219,14 @@ function generate_post_processing_KPI_files(folder_path; stochastic = false, fol
         folders_to_read = intersect(folders_to_read_, folders_to_read)
         out_name = join(folders_to_read, "_")
     end
-    keys = [
-        :gcdi_KPI_adequacy,
-        :gcd_KPI_adequacy,
-        # :gcdi_KPI_objective_function,
-        # :gcd_KPI_objective_function
-        # :KPI_reserve,
-        # :gcdi_KPI_reserve,
-        # :gcd_KPI_reserve,
-        ]
-    values = vcat.([KPI_df_dict(folders, folder_path, stochastic) for folders in chunk_list_custom(folders_to_read, chunk_size)]...)
-    out = NamedTuple(k => v for (k,v) in zip(keys, values))
+
     if save
-        solution_to_parquet(out, out_name, folder_path)
+        solution_to_parquet(
+            vcat_namedtuples([KPI_df_dict(folders, folder_path, stochastic) for folders in chunk_list_custom(folders_to_read, chunk_size)]),
+            out_name,
+            folder_path)
     end
-    return out
+    # return out
 end
 
 function generate_ed_solutions(;days, kwargs...)
@@ -320,7 +330,7 @@ end
 function generate_suc_solutions(;days, kwargs...)
     function generate_suc_solutions_(day, input_folder, output_folder; kwargs...)
         gen_df, scenarios, gen_variable_df, storage_df = generate_stochastic_input_data(day, input_folder)
-        #WARNING: gen_variable_multi_df and gen_df generates a net generation asset that depends on the loads_lumti_df. If this load is negative, net generation will have some values different from zero.
+        #WARNING: gen_variable_multi_df and gen_df generates a net generation asset that depends on the loads_multi_df. If this load is negative, net generation will have some values different from zero.
         # scenarios = load_scenarios(day, input_folder, loads_multi_df, required_reserve) #OBSERVATION: load_scenarios is filtering out the demand based on loads_multi_df which itself is not necessarily the average across scenarios
         config = Dict(
             :storage => storage_df,
