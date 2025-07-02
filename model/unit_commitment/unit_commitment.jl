@@ -76,19 +76,11 @@ function construct_unit_commitment(gen_df, loads, gen_variable, scenarios; kwarg
 end
 
 function solve_unit_commitment(gen_df, loads, gen_variable, scenarios = nothing; kwargs...)
-    reference_solution =  get(kwargs, :reference_solution, nothing)
     uc = construct_unit_commitment(gen_df, loads, gen_variable, scenarios; kwargs...)
     # relax_integrality(uc)
-    # include("./debugging_ignore.jl")
-    # set_optimizer_attribute(model, "OutputFlag", 1)
-    if !isnothing(reference_solution)
-        uc = generate_alternative_model(uc, reference_solution)
-    end
-    # save_model_to_file(uc,"uc")
     optimize!(uc)
     if !is_solved_and_feasible(uc)
         include("./debugging_ignore.jl")
-        # relax_reserve_requirement(uc, kwargs[:reserve])
         @infiltrate   
         # list = get_conflicting_constraints(uc)
     end
