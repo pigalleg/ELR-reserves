@@ -10,7 +10,7 @@ function construct_deterministic_unit_commitment(gen_df, loads, gen_variable, mi
     storage_link_constraint =  get(kwargs, :storage_link_constraint, false)
     storage_reserve_repartition =  get(kwargs, :storage_reserve_repartition, -1) # -1 means no repartitioning, 0 means no reserve for storage, and any other positive number is the percentage of the reserve that should be allocated to storage
     VRESERVE = get(kwargs, :VRESERVE, 1e-6)
-    VSRESUP = get(kwargs, :VSRESUP, 1e4)
+    VSRESUP = get(kwargs, :VSRESUP, 1e+4)
     VSRESDN = get(kwargs, :VSRESDN, 30)
     bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
     thermal_reserve = get(kwargs, :thermal_reserve, false)

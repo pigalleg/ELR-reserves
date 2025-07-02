@@ -332,8 +332,6 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
     end)
     
     @variable(model, VRESERVE in Parameter(VRESERVE)) # used for post-processing
-    @parameter(model, pVRESERVE in Parameter(VRESERVE)) # used for post-processing
-    @infiltrate
     @variable(model, VSRESUP[t in keys(VSRESUP)] in Parameter(VSRESUP[t])) # for post-processing purposes
     @variable(model, VSRESDN[t in keys(VSRESDN)] in Parameter(VSRESDN[t])) # for post-processing purposes
     @variable(model, RRESUP[t in T] in Parameter(reserve[reserve.hour .== t,:reserve_up_MW][1]))
