@@ -67,16 +67,6 @@ config = (
 )
   
 
-function load_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, ε, ρ)
-    file = joinpath(input_folder, G_UC_DATA, "Energy reserve.csv")
-    if isfile(file)
-        println("Energy reserve file found, loading reserves...")
-        return filter_day(day, CSV.read(file, DataFrame))
-    else
-        println("Energy reserve file not found, generating reserves...")
-        return  generate_energy_reserves(loads_multi_df, gen_variable_multi_df, ε, ρ)
-    end
-end
 
 
 function duc(;input_folder, day, kwargs...)
@@ -94,7 +84,7 @@ function duc(;input_folder, day, kwargs...)
         storage_envelopes = true,
         get_dual_variables = true,
         mip_gap = get(kwargs, :mip_gap, 1e-8),
-        # energy_reserve = load_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, G_ε, G_ρ),
+        # energy_reserve = generate_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, G_ε, G_ρ),
         # energy_reserve = generate_energy_reserves_deprecated(required_reserve),
         # energy_reserve = generate_energy_reserves_cumulative(required_reserve),
         storage_link_constraint = false,
@@ -278,7 +268,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, configuration
     s_ed = Dict()
     for day in days, config_ in configurations
         gen_df, loads_multi_df, random_loads_multi_df, gen_variable_multi_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
-        required_energy_reserve = load_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, ε, ρ)
+        required_energy_reserve = generate_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, ε, ρ)
         if energy_reserve
             config = merge(add_config, generate_configuration(config_.value.up, config_.value.down, storage_df, energy_reserve = required_energy_reserve))
         else

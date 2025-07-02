@@ -3,9 +3,9 @@ using CSV
 using Distributions
 using LinearAlgebra
 
-G_DEFAULT_LOCATION = "./input/base_case"
-G_NET_GENERAION_FULL_ID = "net_generation"
-G_UC_DATA = "uc"
+g_DEFAULT_LOCATION = "./input/base_case"
+g_NET_GENERAION_FULL_ID = "net_generation"
+g_UC_DATA = "uc"
 
 # --- start pre_processing ---
 
@@ -32,7 +32,7 @@ function to_GMT(df) # deprecated
   sort!(df, :hour)
 end
 
-function generate_deterministic_input_data(day, input_location = G_DEFAULT_LOCATION)
+function generate_deterministic_input_data(day, input_location = g_DEFAULT_LOCATION)
   gen_info, fuels, loads_df, gen_variable_info, storage_info, storage_final_energy = read_data(input_location)
   gen_df = pre_process_generators_data(gen_info, fuels)
   gen_df, loads_df, gen_variable_df  = pre_process_load_gen_variable(gen_df, loads_df, pre_process_gen_variable(gen_df, gen_variable_info))
@@ -50,11 +50,14 @@ function generate_deterministic_input_data(day, input_location = G_DEFAULT_LOCAT
   # Random loads filtering according to reserves
   random_loads_df = filter_demand(loads_df, random_loads_df, required_reserve)
   
+  transform_to_internal_time(loads_df)
+  transform_to_internal_time(gen_variable_df)
+  transform_to_internal_time(random_loads_df)
   return gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve
   
 end
 
-function generate_stochastic_input_data(day, input_location = G_DEFAULT_LOCATION)
+function generate_stochastic_input_data(day, input_location = g_DEFAULT_LOCATION)
   gen_info, fuels, loads_df, gen_variable_info, storage_info, storage_final_energy = read_data(input_location)
   gen_df = pre_process_generators_data(gen_info, fuels)
   gen_variable_df  = pre_process_gen_variable(gen_df, gen_variable_info)
@@ -75,7 +78,7 @@ function generate_stochastic_input_data(day, input_location = G_DEFAULT_LOCATION
 end 
 
 function generate_reserves(day, input_location, ε=nothing, ρ=nothing)
-  file = joinpath(input_location, G_UC_DATA, "Reserve.csv")
+  file = joinpath(input_location, g_UC_DATA, "Reserve.csv")
   if isfile(file)
     println("Reserve file found, loading reserves...")                            
     required_reserve = filter_day(day, CSV.read(file, DataFrame))
@@ -83,15 +86,30 @@ function generate_reserves(day, input_location, ε=nothing, ρ=nothing)
     println("Reserve file not found, generating reserves...")
     required_reserve = generate_reserves_from_demand(loads_multi_df, gen_variable_multi_df, ε, ρ)
   end
+  transform_to_internal_time(required_reserve)
   return required_reserve
 end
 
-function filter_periods(day, df)
-  # deprecated
-  T_period = (day*24+1):((day+1)*24)
-  # Filtering data with timeseries according to T_period
-  return df[in.(df.hour,Ref(T_period)),:]
+function generate_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, ε=nothing, ρ=nothing)
+    file = joinpath(input_folder, G_UC_DATA, "Energy reserve.csv")
+    if isfile(file)
+        println("Energy reserve file found, loading reserves...")
+        required_energy_reserve =  filter_day(day, CSV.read(file, DataFrame))
+    else
+        println("Energy reserve file not found, generating reserves...")
+        required_energy_reserve =   generate_energy_reserves(loads_multi_df, gen_variable_multi_df, ε, ρ)
+    end
+     transform_to_internal_time(required_energy_reserve)
+    return required_energy_reserve
 end
+
+
+# function filter_periods(day, df)
+#   # deprecated
+#   T_period = (day*24+1):((day+1)*24)
+#   # Filtering data with timeseries according to T_period
+#   return df[in.(df.hour,Ref(T_period)),:]
+# end
 
 function filter_day(day, df)
   if :day in propertynames(df)
@@ -102,14 +120,24 @@ function filter_day(day, df)
   end
 end
 
+function transform_to_internal_time(df)
+  # This function transforms the time in the dataframe to internal time (1-24)
+  # It assumes that the hour is in the range of 1-8760
+  for name in names(df)
+    if occursin("hour", String(name))
+      df[!, name] = mod.(df[!, name] .- 1, 24) .+ 1
+    end
+  end
+end 
+
 function filter_demand(expected_load, loads_to_filter, required_reserve)
   # This function will also correctly work if values of load are negative.
   select = :day in propertynames(loads_to_filter) ? [:hour,:day] : [:hour]
   return transform(loads_to_filter, Not(select) .=> (x -> clamp.(x, expected_load.demand .- required_reserve.reserve_down_MW, expected_load.demand .+ required_reserve.reserve_up_MW)) .=> Not(select))
 end
 
-function read_data(input_location = G_DEFAULT_LOCATION; shift_timezone = false)
-  input_uc_data_location = joinpath(input_location, G_UC_DATA)
+function read_data(input_location = g_DEFAULT_LOCATION; shift_timezone = false)
+  input_uc_data_location = joinpath(input_location, g_UC_DATA)
   gen_info = CSV.read(joinpath(input_uc_data_location,"Generators_data.csv"), DataFrame)
   fuels = CSV.read(joinpath(input_uc_data_location,"Fuels_data.csv"), DataFrame)
   loads = CSV.read(joinpath(input_uc_data_location,"Demand.csv"), DataFrame)
@@ -165,8 +193,8 @@ function pre_process_generators_data(gen_info,  fuels)
   end
   gen_df[last_, :r_id] = maximum(gen_df.r_id) + 1
   gen_df[!, :resource] = String.(gen_df[!, :resource]) # Ensure the column is of type String
-  gen_df[last_, :resource] = G_NET_GENERAION_FULL_ID 
-  gen_df[last_, :full_id] = G_NET_GENERAION_FULL_ID 
+  gen_df[last_, :resource] = g_NET_GENERAION_FULL_ID 
+  gen_df[last_, :full_id] = g_NET_GENERAION_FULL_ID 
   gen_df[last_, :existing_cap_mw] = 0
   gen_df[last_, :var_om_cost_per_mwh] = 0
   gen_df[last_, :is_variable] = true
@@ -207,16 +235,16 @@ function pre_process_load_gen_variable(gen_df, loads_df, gen_variable)
     installed_capacity = maximum(net_generation.generation)
     net_generation.cf = net_generation.generation./installed_capacity
   end
-  net_generation.full_id .= G_NET_GENERAION_FULL_ID
+  net_generation.full_id .= g_NET_GENERAION_FULL_ID
 
   gen_df = copy(gen_df)
-  gen_df[gen_df.full_id .== G_NET_GENERAION_FULL_ID, :existing_cap_mw] .= installed_capacity # Assumes that the element is already in the df
+  gen_df[gen_df.full_id .== g_NET_GENERAION_FULL_ID, :existing_cap_mw] .= installed_capacity # Assumes that the element is already in the df
 
-  gen_variable[gen_variable[!, :full_id] .== G_NET_GENERAION_FULL_ID,:cf] .= 0 # values reset to zero for re-iterations on the ED
-  gen_variable[gen_variable[!, :full_id] .== G_NET_GENERAION_FULL_ID,:existing_cap_mw] .= installed_capacity # values reset to zero for re-iterations on the ED
+  gen_variable[gen_variable[!, :full_id] .== g_NET_GENERAION_FULL_ID,:cf] .= 0 # values reset to zero for re-iterations on the ED
+  gen_variable[gen_variable[!, :full_id] .== g_NET_GENERAION_FULL_ID,:existing_cap_mw] .= installed_capacity # values reset to zero for re-iterations on the ED
   gen_variable = leftjoin(gen_variable, select(net_generation, Not([:demand,:generation])), on = [:hour, :full_id], makeunique = true) # We add :cf and :existing_cap_mw to gen_variable only on the hour where net_generation>0. # Since this is not happening at each hour, we have to create two columns cd_1 and cf_2.
   gen_variable = select(gen_variable, [:hour, :full_id, :r_id, :existing_cap_mw], [:cf_1,:cf] =>ByRow(coalesce) => [:cf]) # We then select columns :cf_1, then :cf and rename them to :cf
-  # gen_variable[gen_variable.full_id.== G_NET_GENERAION_FULL_ID, :existing_cap_mw] .= installed_capacity
+  # gen_variable[gen_variable.full_id.== g_NET_GENERAION_FULL_ID, :existing_cap_mw] .= installed_capacity
   return gen_df, loads_df, sort(gen_variable,[:r_id,:hour])
 end
 
@@ -233,18 +261,18 @@ function pre_process_scenarios_demand_gen_variable(gen_df, scenarios_demand, gen
   # net_generation[!, Not([:hour, :day])]  = net_generation[!, Not([:hour, :day])] ./ installed_capacity # cf = generation / installed_capacity  
   net_generation = stack(net_generation, Not([:hour, :day]), variable_name=:scenario, value_name=:cf)
   net_generation.cf .= installed_capacity != 0 ? net_generation.cf ./ installed_capacity : 0
-  net_generation.full_id .= G_NET_GENERAION_FULL_ID
+  net_generation.full_id .= g_NET_GENERAION_FULL_ID
   net_generation.existing_cap_mw .= installed_capacity
-  net_generation.r_id .= gen_df[gen_df.full_id.== G_NET_GENERAION_FULL_ID,:r_id]
+  net_generation.r_id .= gen_df[gen_df.full_id.== g_NET_GENERAION_FULL_ID,:r_id]
   # Replicate gen_variable for each scenario and join to net_generation
-  gen_variable = gen_variable[gen_variable.full_id .!= G_NET_GENERAION_FULL_ID,:] 
+  gen_variable = gen_variable[gen_variable.full_id .!= g_NET_GENERAION_FULL_ID,:] 
   gen_variable = filter(row -> row.hour in net_generation.hour, gen_variable)
   scenarios_list = unique(net_generation.scenario)
   gen_variable_expanded = vcat([transform(gen_variable, :full_id => (_ -> s) => :scenario) for s in scenarios_list]...)
   gen_variable_expanded.scenario = convert.(eltype(net_generation.scenario), gen_variable_expanded.scenario)
   gen_variable = vcat(gen_variable_expanded, net_generation)
 
-  gen_df[gen_df.full_id .== G_NET_GENERAION_FULL_ID, :existing_cap_mw] .= installed_capacity 
+  gen_df[gen_df.full_id .== g_NET_GENERAION_FULL_ID, :existing_cap_mw] .= installed_capacity 
   
   # gen_variable = leftjoin(gen_variable_expanded, net_generation, on=[:day, :hour, :full_id, :scenario], makeunique=true)
   # gen_variable = select(gen_variable, Not(:cf_1), :cf => ByRow(coalesce) => :cf)
@@ -254,8 +282,8 @@ end
 
 
 function pre_process_gen_variable(gen_df, gen_variable_info)
-  # It sets G_NET_GENERAION_FULL_ID's cf to zero and adds existing_cap_mw based on gen_df. Needed for UC.
-  gen_variable_info[!,G_NET_GENERAION_FULL_ID] .= 0 # net generation = -net_load for net_load < 0
+  # It sets g_NET_GENERAION_FULL_ID's cf to zero and adds existing_cap_mw based on gen_df. Needed for UC.
+  gen_variable_info[!,g_NET_GENERAION_FULL_ID] .= 0 # net generation = -net_load for net_load < 0
   select_ = :day in propertynames(gen_variable_info) ? [:hour,:day] : [:hour]
   aux = stack(gen_variable_info, Not(select_), variable_name=:full_id, value_name=:cf)
   return innerjoin(aux,
@@ -263,28 +291,28 @@ function pre_process_gen_variable(gen_df, gen_variable_info)
     on = :full_id)
 end
 
-function read_random_demand(input_location = G_DEFAULT_LOCATION)
+function read_random_demand(input_location = g_DEFAULT_LOCATION)
   return CSV.read(joinpath(input_location, "ed", "random_demand.csv"), DataFrame)
 end
 
 function read_demand_scenarios(input_location)
-  return CSV.read(joinpath(input_location, G_UC_DATA, "scenarios", "scenarios_demand.csv"), DataFrame)
+  return CSV.read(joinpath(input_location, g_UC_DATA, "scenarios", "scenarios_demand.csv"), DataFrame)
 end
 
 function read_probability_scenarios(input_location)
-  return CSV.read(joinpath(input_location, G_UC_DATA, "scenarios", "scenarios_probability.csv"), DataFrame)
+  return CSV.read(joinpath(input_location, g_UC_DATA, "scenarios", "scenarios_probability.csv"), DataFrame)
 end
 
-function generate_scenarios_data(input_location = G_DEFAULT_LOCATION)
+function generate_scenarios_data(input_location = g_DEFAULT_LOCATION)
   return read_demand_scenarios(input_location),read_probability_scenarios(input_location)
 end
 
-function generate_scenarios_data_deprecated(day, input_location = G_DEFAULT_LOCATION)
+function generate_scenarios_data_deprecated(day, input_location = g_DEFAULT_LOCATION)
   return (demand = filter_day(day, read_demand_scenarios(input_location)), probability = read_probability_scenarios(input_location))
 end
 
-function read_reserve(input_location = G_DEFAULT_LOCATION)
-  return CSV.read(joinpath(input_location, G_UC_DATA, "Reserve.csv"), DataFrame)
+function read_reserve(input_location = g_DEFAULT_LOCATION)
+  return CSV.read(joinpath(input_location, g_UC_DATA, "Reserve.csv"), DataFrame)
 end
 
 
@@ -317,31 +345,9 @@ function generate_configuration(μ_up, μ_dn, storage_df; reserve=nothing, energ
   return out
 end
 
-# function generate_configuration(key, storage_df; reserve=nothing, energy_reserve=nothing) # deprecated
-#   function generate_envelope_configuration(μ_up, μ_dn, storage_df)
-#     return Dict(
-#         :ramp_constraints => true,
-#         :storage => storage_df,
-#         # :reserve => required_reserve,
-#         # :enriched_solution => true,
-#         :storage_envelopes => true,
-#         :μ_up => μ_up,
-#         :μ_dn => μ_dn)
-#   end
-#   envelope_config_key = match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", string(key))
-#   μ_up = parse(Float64, replace(envelope_config_key[1], "_" => "."))
-#   μ_dn = parse(Float64, replace(envelope_config_key[2], "_" => "."))
-#   out =  generate_envelope_configuration(μ_up, μ_dn, storage_df)
-#   if !isnothing(energy_reserve)
-#     out[:energy_reserve] = energy_reserve
-#   else 
-#     out[:reserve] = reserve
-#   end
-#   return out
-# end
-
 function generate_reserves_old(loads, gen_variable, margin_percentage, baseload = 0)
-  filter = gen_variable[!,:full_id] .== G_NET_GENERAION_FULL_ID
+  # deprecated
+  filter = gen_variable[!,:full_id] .== g_NET_GENERAION_FULL_ID
   net_gen = gen_variable[filter,:cf] .* gen_variable[filter,:existing_cap_mw]
   required_reserve = DataFrame(
     hour = loads[!,:hour],
@@ -352,7 +358,8 @@ function generate_reserves_old(loads, gen_variable, margin_percentage, baseload 
 end
 
 function generate_reserves_from_demand(loads, gen_variable, ε, ρ; margin=0.1)
-  filter = gen_variable[!,:full_id] .== G_NET_GENERAION_FULL_ID
+  # deprecated
+  filter = gen_variable[!,:full_id] .== g_NET_GENERAION_FULL_ID
   net_gen = gen_variable[filter,:cf] .* gen_variable[filter,:existing_cap_mw]
   p = 1-ε # 0.975
   μ = (loads[!,:demand] .+ net_gen)
@@ -366,9 +373,10 @@ function generate_reserves_from_demand(loads, gen_variable, ε, ρ; margin=0.1)
 end
 
 function generate_energy_reserves_from_demand(loads, gen_variable, ε, ρ; margin=0.1)
+  # deprecated
   # Assumes that X[t] t = [1...24] are independent N(0,σ[t])
   # therefore Z[i,t] = sum_{τ=i}^t X[τ] is N(0,σ_Z[i,t]) with σ_Z[i,t] = (sum_{τ=i}^t σ[τ]^2)^1/2
-  filter = gen_variable[!,:full_id] .== G_NET_GENERAION_FULL_ID
+  filter = gen_variable[!,:full_id] .== g_NET_GENERAION_FULL_ID
   net_gen = gen_variable[filter,:cf] .* gen_variable[filter,:existing_cap_mw]
   p = 1-ε
   # σ = quantile(Normal(),p)
@@ -395,6 +403,7 @@ end
 
 
 function generate_energy_reserves_deprecated(required_reserve)
+  # deprecated
   required_energy_reserve = [(row_1.hour, row_2.hour, row_1.reserve_up_MW*(row_1.hour == row_2.hour), row_1.reserve_down_MW*(row_1.hour == row_2.hour)) for row_1 in eachrow(required_reserve), row_2 in eachrow(required_reserve) if row_1.hour <= row_2.hour]
   required_energy_reserve = DataFrame(required_energy_reserve)
   required_energy_reserve = rename(required_energy_reserve, :1 => :i_hour, :2 => :t_hour, :3 => :reserve_up_MW, :4 => :reserve_down_MW,)
@@ -402,6 +411,7 @@ function generate_energy_reserves_deprecated(required_reserve)
 end
 
 function generate_energy_reserves_cumulative(required_reserve)
+  # deprecated
   required_energy_reserve_cumulated = [(row_1.hour, row_2.hour, sum(required_reserve[(required_reserve.hour .>= row_1.hour).&(required_reserve.hour .<= row_2.hour),:reserve_up_MW]), sum(required_reserve[(required_reserve.hour .>= row_1.hour).&(required_reserve.hour .<= row_2.hour),:reserve_down_MW])) for row_1 in eachrow(required_reserve), row_2 in eachrow(required_reserve) if row_1.hour <= row_2.hour]
   required_energy_reserve_cumulated = DataFrame(required_energy_reserve_cumulated)
   required_energy_reserve_cumulated = rename(required_energy_reserve_cumulated, :1 => :i_hour, :2 => :t_hour, :3 => :reserve_up_MW, :4 => :reserve_down_MW,)

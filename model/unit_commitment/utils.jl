@@ -1,3 +1,5 @@
+include("./config.jl")
+
 function remove_variable_constraint(model, key, delete_ = true)
   # Applies for constraints and variables
   println("Removing $key...")
@@ -34,7 +36,7 @@ function create_generators_sets(gen_df)
 end
 
 function create_time_sets(loads)
-  return loads.hour, loads.hour[1:end-1]
+  return collect(1:g_HORIZON_LENGTH), collect(1:g_HORIZON_LENGTH-1)
 end
 
 function get_sets(gen_df, demand, probability = nothing) #stochastic
