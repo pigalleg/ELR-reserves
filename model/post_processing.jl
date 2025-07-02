@@ -82,6 +82,17 @@ function get_fixed_model(model)
     return model_
 end
 
+function get_nonfeasbile_model_information(model)
+    # Output is a NamedTuple with scalar information about the model. The 'scalar' field is also present on feasible models.
+    return (
+        scalar = DataFrame(
+            termination_status = string(termination_status(model)),
+            primal_status = string(primal_status(model)),
+            dual_Status = string(dual_status(model))
+        ),      
+    )
+end
+
 function get_solution(model, stochastic = false, get_dual_variables = false)
     if get_dual_variables # when get_dual_variables = true, output contains the fixed model's solution
         model_ = get_fixed_model(model)
