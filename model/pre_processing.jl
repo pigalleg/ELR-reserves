@@ -8,14 +8,13 @@ g_NET_GENERAION_FULL_ID = "net_generation"
 g_UC_DATA = "uc"
 
 # --- start pre_processing ---
-
 function variance(σ, ρ)
   # For autocorrelated errors X[t+1] = ρ*X[t] + (1-ρ^2)^(1/2)*N(0,σ[t])
   # then var(X[t]) = ρ^2*var(X[t-1]) + (1-ρ^2)*σ[t]^2, with var(X[0]) = σ[0]^2
   var = Vector{Float64}(undef,  length(σ))
   var[1] = σ[1]^2
   for i in 2:length(var)
-    var[i] = ρ^2*var[i-1] + (1-ρ^2)* σ[i]^2
+    var[i] = ρ^2*var[i-1] + (1-ρ^2)* σ[i]^2f
   end
   return var
 end
@@ -32,14 +31,41 @@ function to_GMT(df) # deprecated
   sort!(df, :hour)
 end
 
-function generate_deterministic_input_data(day, input_location = g_DEFAULT_LOCATION)
+function read_data(input_location, shift_timezone = false)
+  input_uc_data_location = joinpath(input_location, g_UC_DATA)
+  gen_info = CSV.read(joinpath(input_uc_data_location,"Generators_data.csv"), DataFrame)
+  fuels = CSV.read(joinpath(input_uc_data_location,"Fuels_data.csv"), DataFrame)
+  loads = CSV.read(joinpath(input_uc_data_location,"Demand.csv"), DataFrame)
+  gen_variable = CSV.read(joinpath(input_uc_data_location,"Generators_variability.csv"), DataFrame)
+  storage_info = CSV.read(joinpath(input_uc_data_location,"Storage_data.csv"), DataFrame)
+  storage_final_energy_path = joinpath(input_uc_data_location, "Storage_final_energy.csv")
+  storage_final_energy = isfile(storage_final_energy_path) ? CSV.read(storage_final_energy_path, DataFrame) : nothing
+  # storage_final_energy = CSV.read(joinpath(input_uc_data_location,"Storage_final_energy.csv"), DataFrame)
+  # rename all columns to lowercase (by convention)
+  files_to_lowercase = [gen_info, fuels, loads, gen_variable, storage_info]
+  if storage_final_energy !== nothing
+    push!(files_to_lowercase, storage_final_energy)
+  end
+  for f in files_to_lowercase
+      rename!(f,lowercase.(names(f)))
+  end
+  if shift_timezone
+    to_GMT(gen_variable)
+    to_GMT(loads)
+  end
+  return gen_info, fuels, loads, identity.(gen_variable), storage_info, storage_final_energy
+end
+
+function generate_deterministic_input_data(input_location, day = nothing)
   gen_info, fuels, loads_df, gen_variable_info, storage_info, storage_final_energy = read_data(input_location)
   gen_df = pre_process_generators_data(gen_info, fuels)
   gen_df, loads_df, gen_variable_df  = pre_process_load_gen_variable(gen_df, loads_df, pre_process_gen_variable(gen_df, gen_variable_info))
-  storage_df = pre_process_storage_data(storage_info, day, storage_final_energy)
+  storage_df = pre_process_storage_data(storage_info)
+  # storage_df = pre_process_storage_data(storage_info, day, storage_final_energy)
   random_loads_df = read_random_demand(input_location)
-  required_reserve = generate_reserves(day, input_location)
-  
+  required_reserve = generate_reserves(input_location)
+  required_energy_reserve = generate_energy_reserve(input_location)
+
   # Day filtering
   if !isnothing(day)
       loads_df = filter_day(day, loads_df)
@@ -53,8 +79,7 @@ function generate_deterministic_input_data(day, input_location = g_DEFAULT_LOCAT
   transform_to_internal_time(loads_df)
   transform_to_internal_time(gen_variable_df)
   transform_to_internal_time(random_loads_df)
-  return gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve
-  
+  return gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve, required_energy_reserve
 end
 
 function generate_stochastic_input_data(day, input_location = g_DEFAULT_LOCATION)
@@ -77,31 +102,42 @@ function generate_stochastic_input_data(day, input_location = g_DEFAULT_LOCATION
   return gen_df, scenarios, gen_variable_df, storage_df
 end 
 
-function generate_reserves(day, input_location, ε=nothing, ρ=nothing)
-  file = joinpath(input_location, g_UC_DATA, "Reserve.csv")
-  if isfile(file)
-    println("Reserve file found, loading reserves...")                            
-    required_reserve = filter_day(day, CSV.read(file, DataFrame))
-  else
-    println("Reserve file not found, generating reserves...")
-    required_reserve = generate_reserves_from_demand(loads_multi_df, gen_variable_multi_df, ε, ρ)
-  end
-  transform_to_internal_time(required_reserve)
-  return required_reserve
+function generate_reserves(input_location)
+  out = CSV.read(joinpath(input_location, g_UC_DATA, "Reserve.csv"), DataFrame)
+  transform_to_internal_time(out)
+  return out
 end
 
-function generate_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, ε=nothing, ρ=nothing)
-    file = joinpath(input_folder, G_UC_DATA, "Energy reserve.csv")
-    if isfile(file)
-        println("Energy reserve file found, loading reserves...")
-        required_energy_reserve =  filter_day(day, CSV.read(file, DataFrame))
-    else
-        println("Energy reserve file not found, generating reserves...")
-        required_energy_reserve =   generate_energy_reserves(loads_multi_df, gen_variable_multi_df, ε, ρ)
-    end
-     transform_to_internal_time(required_energy_reserve)
-    return required_energy_reserve
+# function generate_reserves(day, input_location, ε=nothing, ρ=nothing)
+#   file = joinpath(input_location, g_UC_DATA, "Reserve.csv")
+#   if isfile(file)
+#     println("Reserve file found, loading reserves...")                            
+#     required_reserve = filter_day(day, CSV.read(file, DataFrame))
+#   else
+#     println("Reserve file not found, generating reserves...")
+#     required_reserve = generate_reserves_from_demand(loads_multi_df, gen_variable_multi_df, ε, ρ)
+#   end
+#   transform_to_internal_time(required_reserve)
+#   return required_reserve
+# end
+
+function generate_energy_reserve(input_folder)
+    out = CSV.read(joinpath(input_folder, g_UC_DATA, "Energy reserve.csv"), DataFrame)
+    transform_to_internal_time(out)
+    return out
 end
+# function generate_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, ε=nothing, ρ=nothing)
+#     file = joinpath(input_folder, g_UC_DATA, "Energy reserve.csv")
+#     if isfile(file)
+#         println("Energy reserve file found, loading reserves...")
+#         required_energy_reserve =  filter_day(day, CSV.read(file, DataFrame))
+#     else
+#         println("Energy reserve file not found, generating reserves...")
+#         required_energy_reserve =   generate_energy_reserves(loads_multi_df, gen_variable_multi_df, ε, ρ)
+#     end
+#      transform_to_internal_time(required_energy_reserve)
+#     return required_energy_reserve
+# end
 
 
 # function filter_periods(day, df)
@@ -128,37 +164,13 @@ function transform_to_internal_time(df)
       df[!, name] = mod.(df[!, name] .- 1, 24) .+ 1
     end
   end
+  sort!(df, intersect([:r_id, :day, :hour], propertynames(df)))
 end 
 
 function filter_demand(expected_load, loads_to_filter, required_reserve)
   # This function will also correctly work if values of load are negative.
   select = :day in propertynames(loads_to_filter) ? [:hour,:day] : [:hour]
   return transform(loads_to_filter, Not(select) .=> (x -> clamp.(x, expected_load.demand .- required_reserve.reserve_down_MW, expected_load.demand .+ required_reserve.reserve_up_MW)) .=> Not(select))
-end
-
-function read_data(input_location = g_DEFAULT_LOCATION; shift_timezone = false)
-  input_uc_data_location = joinpath(input_location, g_UC_DATA)
-  gen_info = CSV.read(joinpath(input_uc_data_location,"Generators_data.csv"), DataFrame)
-  fuels = CSV.read(joinpath(input_uc_data_location,"Fuels_data.csv"), DataFrame)
-  loads = CSV.read(joinpath(input_uc_data_location,"Demand.csv"), DataFrame)
-  gen_variable = CSV.read(joinpath(input_uc_data_location,"Generators_variability.csv"), DataFrame)
-  storage_info = CSV.read(joinpath(input_uc_data_location,"Storage_data.csv"), DataFrame)
-  storage_final_energy_path = joinpath(input_uc_data_location, "Storage_final_energy.csv")
-  storage_final_energy = isfile(storage_final_energy_path) ? CSV.read(storage_final_energy_path, DataFrame) : nothing
-  # storage_final_energy = CSV.read(joinpath(input_uc_data_location,"Storage_final_energy.csv"), DataFrame)
-  # rename all columns to lowercase (by convention)
-  files_to_lowercase = [gen_info, fuels, loads, gen_variable, storage_info]
-  if storage_final_energy !== nothing
-    push!(files_to_lowercase, storage_final_energy)
-  end
-  for f in files_to_lowercase
-      rename!(f,lowercase.(names(f)))
-  end
-  if shift_timezone
-    to_GMT(gen_variable)
-    to_GMT(loads)
-  end
-  return gen_info, fuels, loads, identity.(gen_variable), storage_info, storage_final_energy
 end
 
 function pre_process_generators_data(gen_info,  fuels)
@@ -177,7 +189,7 @@ function pre_process_generators_data(gen_info,  fuels)
   end
 
   # create full name of generator (including geographic location and cluster number)
-  #  for use with variable generation dataframe
+  # for use with variable generation dataframe
   if !(:full_id in propertynames(gen_df))
     gen_df.full_id = gen_df.region .* "_" .* gen_df.resource .* "_" .* string.(gen_df.cluster) .* ".0"
   end
@@ -192,7 +204,7 @@ function pre_process_generators_data(gen_info,  fuels)
     gen_df[last_, k] = ifelse(gen_df[last_, k] isa AbstractString, "", 0.0)
   end
   gen_df[last_, :r_id] = maximum(gen_df.r_id) + 1
-  gen_df[!, :resource] = String.(gen_df[!, :resource]) # Ensure the column is of type String
+  gen_df[!, :resource] = String.(gen_df[!, :resource]) # Ensures the column is of type String
   gen_df[last_, :resource] = g_NET_GENERAION_FULL_ID 
   gen_df[last_, :full_id] = g_NET_GENERAION_FULL_ID 
   gen_df[last_, :existing_cap_mw] = 0
@@ -203,7 +215,19 @@ function pre_process_generators_data(gen_info,  fuels)
   return identity.(gen_df)
 end
 
-function pre_process_storage_data(storage_info, day, storage_final_energy)
+
+function pre_process_storage_data(storage_info)
+  df = copy(storage_info)
+  if !(:full_id in propertynames(df))
+    # create full name of generator (including geographic location and cluster number)
+    #  for use with variable generation dataframe
+    df.full_id = df.region .* "_" .* df.resource .* "_" .* string.(df.cluster) .* ".0"
+  end 
+  df.full_id = lowercase.(df.full_id)
+  return df
+end
+
+function pre_process_storage_data_old(storage_info, day, storage_final_energy)
   df = copy(storage_info)
   if !(:full_id in propertynames(df))
     # create full name of generator (including geographic location and cluster number)
@@ -242,10 +266,11 @@ function pre_process_load_gen_variable(gen_df, loads_df, gen_variable)
 
   gen_variable[gen_variable[!, :full_id] .== g_NET_GENERAION_FULL_ID,:cf] .= 0 # values reset to zero for re-iterations on the ED
   gen_variable[gen_variable[!, :full_id] .== g_NET_GENERAION_FULL_ID,:existing_cap_mw] .= installed_capacity # values reset to zero for re-iterations on the ED
-  gen_variable = leftjoin(gen_variable, select(net_generation, Not([:demand,:generation])), on = [:hour, :full_id], makeunique = true) # We add :cf and :existing_cap_mw to gen_variable only on the hour where net_generation>0. # Since this is not happening at each hour, we have to create two columns cd_1 and cf_2.
-  gen_variable = select(gen_variable, [:hour, :full_id, :r_id, :existing_cap_mw], [:cf_1,:cf] =>ByRow(coalesce) => [:cf]) # We then select columns :cf_1, then :cf and rename them to :cf
+  gen_variable = leftjoin(gen_variable, select(net_generation, Not([:demand,:generation])), on = [:hour, :full_id], makeunique = true) # We add :cf and :existing_cap_mw to gen_variable only on the hour where net_generation>0. # Since this is not happening at each hour, we have to create two columns cd_1 and cf_2
+  join_on = intersect([:day, :hour], propertynames(gen_variable))
+  gen_variable = select(gen_variable, union(join_on, [:full_id, :r_id, :existing_cap_mw]), [:cf_1, :cf] =>ByRow(coalesce) => [:cf]) # We then select columns :cf_1, then :cf and rename them to :cf
   # gen_variable[gen_variable.full_id.== g_NET_GENERAION_FULL_ID, :existing_cap_mw] .= installed_capacity
-  return gen_df, loads_df, sort(gen_variable,[:r_id,:hour])
+  return gen_df, loads_df, sort(gen_variable,union([:r_id], join_on))
 end
 
 

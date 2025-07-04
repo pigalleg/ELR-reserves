@@ -72,7 +72,7 @@ config = (
 function duc(;input_folder, day, kwargs...)
     # input_folder = get(kwargs, :input_folder, G_input_folder)
     # day = get(kwargs, :day, G_day)
-    gen_df, loads_multi_df, random_loads_multi_df, gen_variable_multi_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
+    gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
     storage_df.max_energy_mwh .=storage_df.max_energy_mwh*get(kwargs, :storage_max_energy_factor, 1)
     storage_df.existing_cap_mw .=storage_df.existing_cap_mw*get(kwargs, :storage_max_cap_factor, 1)
     config = (
@@ -84,7 +84,7 @@ function duc(;input_folder, day, kwargs...)
         storage_envelopes = true,
         get_dual_variables = true,
         mip_gap = get(kwargs, :mip_gap, 1e-8),
-        # energy_reserve = generate_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, G_ε, G_ρ),
+        # energy_reserve = generate_energy_reserve(day, input_folder, loads_df, gen_variable_df, G_ε, G_ρ),
         # energy_reserve = generate_energy_reserves_deprecated(required_reserve),
         # energy_reserve = generate_energy_reserves_cumulative(required_reserve),
         storage_link_constraint = false,
@@ -93,23 +93,23 @@ function duc(;input_folder, day, kwargs...)
     )
     model= solve_unit_commitment(
         gen_df,
-        loads_multi_df,
-        gen_variable_multi_df;
+        loads_df,
+        gen_variable_df;
         config...
         )
-    return model, get_model_solution(model, gen_df, gen_variable_multi_df; loads = loads_multi_df, config...), required_reserve
+    return model, get_model_solution(model, gen_df, gen_variable_df; loads = loads_df, config...), required_reserve
 end
 
 function suc(;kwargs...)
     input_folder = get(kwargs, :input_folder, G_input_folder)
     day = get(kwargs, :day, G_day)
     expected_min_SOE = get(kwargs, :expected_min_SOE, false)
-    gen_df, loads_multi_df, random_loads_multi_df, gen_variable_multi_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
-    scenarios = load_scenarios(day, input_folder, loads_multi_df, required_reserve)
+    gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
+    scenarios = load_scenarios(day, input_folder, loads_df, required_reserve)
     return solve_unit_commitment(
         gen_df,
-        loads_multi_df,
-        gen_variable_multi_df,
+        loads_df,
+        gen_variable_df,
         scenarios;
         storage = storage_df,
         expected_min_SOE = expected_min_SOE,
@@ -120,12 +120,12 @@ end
 function ed(;kwargs...)
     input_folder = get(kwargs, :input_folder, G_input_folder)
     day = get(kwargs, :day, G_day)
-    gen_df, loads_multi_df, random_loads_multi_df, gen_variable_multi_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
+    gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
     solution  = solve_economic_dispatch_get_solution(
         duc(;kwargs...),
         gen_df,
-        random_loads_multi_df,
-        gen_variable_multi_df;
+        random_loads_df,
+        gen_variable_df;
         config...
         )
     return solution
@@ -266,9 +266,15 @@ function generate_ed_solutions_(days, input_folder, output_folder, configuration
     # configurations = vcat(configurations, [:base_ramp_storage_energy_reserve_cumulated])
     s_uc = Dict()
     s_ed = Dict()
+
+    gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve, required_energy_reserve = generate_deterministic_input_data(input_folder)
     for day in days, config_ in configurations
-        gen_df, loads_multi_df, random_loads_multi_df, gen_variable_multi_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
-        required_energy_reserve = generate_energy_reserve(day, input_folder, loads_multi_df, gen_variable_multi_df, ε, ρ)
+        loads_df = filter_day(day, loads_df_)
+        gen_variable_df = filter_day(day, gen_variable_df_)
+        random_loads_df = filter_day(day, random_loads_df_)
+        required_reserve = filter_day(day, required_reserve)
+        required_energy_reserve = filter_day(day, required_energy_reserve)
+        gen_df, loads_df, gen_variable_df = pre_process_load_gen_variable(gen_df_, loads_df, gen_variable_df) 
         if energy_reserve
             config = merge(add_config, generate_configuration(config_.value.up, config_.value.down, storage_df, energy_reserve = required_energy_reserve))
         else
@@ -276,16 +282,16 @@ function generate_ed_solutions_(days, input_folder, output_folder, configuration
         end
         uc = solve_unit_commitment(
             gen_df,
-            loads_multi_df,
-            gen_variable_multi_df;
+            loads_df,
+            gen_variable_df;
             config...
         )
-        s_uc[(day,config_.key)] = get_model_solution(uc, gen_df, gen_variable_multi_df; loads = loads_multi_df, config...)
+        s_uc[(day,config_.key)] = get_model_solution(uc, gen_df, gen_variable_df; loads = loads_df, config...)
         s_ed[(day,config_.key)] = solve_economic_dispatch_get_solution(
             uc,
             gen_df,
-            random_loads_multi_df,
-            gen_variable_multi_df;
+            random_loads_df,
+            gen_variable_df;
             config...
         )
     end
@@ -310,8 +316,8 @@ end
 function generate_suc_solutions(;days, kwargs...)
     function generate_suc_solutions_(day, input_folder, output_folder; kwargs...)
         gen_df, scenarios, gen_variable_df, storage_df = generate_stochastic_input_data(day, input_folder)
-        #WARNING: gen_variable_multi_df and gen_df generates a net generation asset that depends on the loads_multi_df. If this load is negative, net generation will have some values different from zero.
-        # scenarios = load_scenarios(day, input_folder, loads_multi_df, required_reserve) #OBSERVATION: load_scenarios is filtering out the demand based on loads_multi_df which itself is not necessarily the average across scenarios
+        #WARNING: gen_variable_df and gen_df generates a net generation asset that depends on the loads_df. If this load is negative, net generation will have some values different from zero.
+        # scenarios = load_scenarios(day, input_folder, loads_df, required_reserve) #OBSERVATION: load_scenarios is filtering out the demand based on loads_df which itself is not necessarily the average across scenarios
         config = Dict(
             :storage => storage_df,
             :VLGEN => get(kwargs, :VLGEN, 0),
