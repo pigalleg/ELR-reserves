@@ -22,12 +22,12 @@ function construct_deterministic_unit_commitment(gen_df, loads, gen_variable, mi
     if ndims(μ_up) == 0 # if μ_up is a scalar we convert to vector, otherwise we assume it comes as a vector with the same length as T
         μ_up = convert_to_indexed_vector(μ_up, sets.T)
     else
-        μ_up = Dict(sets.T.=>μ_up)
+        μ_up = Dict(sets.T .=> μ_up)
     end 
     if ndims(μ_dn) == 0 # if μ_up is a scalar we convert to vector, otherwise we assume it comes as a vector with the same length as T
         μ_dn = convert_to_indexed_vector(μ_dn, sets.T)
     else
-        μ_dn = Dict(sets.T.=>μ_dn)  
+        μ_dn = Dict(sets.T .=> μ_dn)  
     end
     uc = DUC(gen_df, loads, gen_variable, mip_gap)
     if !isnothing(storage)
@@ -49,6 +49,7 @@ function construct_deterministic_unit_commitment(gen_df, loads, gen_variable, mi
     return uc
 end
 
+
 function construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints, scenarios, expected_min_SOE, VLOL, VLGEN)
     println("Constructing SUC...")
     uc = SUC(gen_df, gen_variable, scenarios, mip_gap, VLOL, VLGEN)
@@ -63,15 +64,50 @@ function construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, sto
     return uc
 end
 
+function update_time_dependent_data(model, loads_df, gen_variable, required_reserve, required_energy_reserve)
+    # Updates the deterministic unit commitment model with new loads, gen_variable, reserve and energy_reserve
+    println("Updating DUC model with time-dependent data...")
+    # update_loads(model, loads_df)
+    # update_gen_variable(model, gen_variable)
 
-function construct_unit_commitment(gen_df, loads, gen_variable, scenarios; kwargs...)
+
+    if !isnothing(required_reserve) & isnothing(required_energy_reserve)
+        update_parameter_value(model, :RRESUP, required_reserve[:,:reserve_up_MW])
+        update_parameter_value(model, :RRESDN, required_reserve[:,:reserve_down_MW])
+    end
+
+    # if !isnothing(energy_reserve) &&  isnothing(reserve)
+    #     update_energy_reserve(model, energy_reserve)
+    # end
+    return model
+end 
+
+
+function construct_unit_commitment_(gen_df; scenarios, kwargs...)
     storage = get(kwargs, :storage, nothing)
     ramp_constraints = get(kwargs, :ramp_constraints, true)
     mip_gap = get(kwargs, :mip_gap, 1e-8)
+    expected_min_SOE = get(kwargs, :expected_min_SOE, false) # SUC
+    VLOL = get(kwargs, :VLOL, 1e4) # SUC
+    VLGEN = get(kwargs, :VLGEN, 0) # SUC
     if isnothing(scenarios)
         return construct_deterministic_unit_commitment(gen_df, loads, gen_variable, mip_gap, storage, ramp_constraints; kwargs...)
     else
-        return construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints, scenarios, get(kwargs, :expected_min_SOE, false), get(kwargs, :VLOL, 1e4), get(kwargs, :VLGEN, 0))
+        return construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints, scenarios, expected_min_SOE, VLOL, VLGEN)
+    end
+end
+
+function construct_unit_commitment(gen_df, loads, gen_variable; scenarios, kwargs...)
+    storage = get(kwargs, :storage, nothing)
+    ramp_constraints = get(kwargs, :ramp_constraints, true)
+    mip_gap = get(kwargs, :mip_gap, 1e-8)
+    expected_min_SOE = get(kwargs, :expected_min_SOE, false)
+    VLOL = get(kwargs, :VLOL, 1e4)  
+    VLGEN = get(kwargs, :VLGEN, 0)
+    if isnothing(scenarios)
+        return construct_deterministic_unit_commitment(gen_df, loads, gen_variable, mip_gap, storage, ramp_constraints; kwargs...)
+    else
+        return construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints, scenarios, expected_min_SOE, VLOL, VLGEN)
     end
 end
 

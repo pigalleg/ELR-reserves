@@ -1,5 +1,14 @@
 include("./config.jl")
 
+function update_parameter_value(model, key, value)
+  # Updates the value of a parameter in the model
+  println("Updating parameter $key value")
+  for idx in eachindex(model[key])
+    set_parameter_value(model[key][idx], value[idx])
+  end
+  println("...done")
+  end
+
 function remove_variable_constraint(model, key, delete_ = true)
   # Applies for constraints and variables
   println("Removing $key...")
@@ -11,7 +20,7 @@ function remove_variable_constraint(model, key, delete_ = true)
   unregister(model, key)
 end
 
-# TODO change gen_variable => gen_varialbe_df, loads => loads_df
+
 function create_generators_sets(gen_df)
   # Thermal resources for which unit commitment constraints apply
   G_thermal = gen_df[gen_df[!,:up_time] .> 0,:r_id] 
