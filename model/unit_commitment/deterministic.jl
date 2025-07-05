@@ -330,12 +330,12 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
         SRESUP[T] >= 0 # RESUP slack
         SRESDN[T] >= 0 # RESDN slack
     end)
-    
     @variable(model, VRESERVE in Parameter(VRESERVE)) # used for post-processing
-    @variable(model, VSRESUP[t in keys(VSRESUP)] in Parameter(VSRESUP[t])) # for post-processing purposes
-    @variable(model, VSRESDN[t in keys(VSRESDN)] in Parameter(VSRESDN[t])) # for post-processing purposes
-    @variable(model, RRESUP[t in T] in Parameter(reserve[reserve.hour .== t,:reserve_up_MW][1]))
-    @variable(model, RRESDN[t in T] in Parameter(reserve[reserve.hour .== t,:reserve_down_MW][1]))
+    @variable(model, VSRESUP[t in T] in Parameter(VSRESUP[t])) # for post-processing purposes
+    @variable(model, VSRESDN[t in T] in Parameter(VSRESDN[t])) # for post-processing purposes
+    
+    @variable(model, RRESUP[t in T] in Parameter(0.0))
+    @variable(model, RRESDN[t in T] in Parameter(0.0))
 
     @expression(model, ReservePenalizationCost,
         VRESERVE*sum(RESUP[g,t] + RESDN[g,t] for g in G_reserve, t in T)

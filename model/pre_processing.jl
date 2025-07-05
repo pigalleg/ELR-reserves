@@ -353,22 +353,40 @@ end
 
 # --- end pre_processing ---
 
-
-function generate_configuration(μ_up, μ_dn, storage_df; reserve=nothing, energy_reserve=nothing)
+function generate_basic_configuration(storage_df, energy_reserve)
   out = Dict(
     :ramp_constraints => true,
     :storage => storage_df,
     :enriched_solution => true,
     :storage_envelopes => true,
-    :μ_up => μ_up,
-    :μ_dn => μ_dn)
-  if !isnothing(energy_reserve)
-    out[:energy_reserve] = energy_reserve
-  else 
-    out[:reserve] = reserve
-  end
+    :reserve => true ? !energy_reserve : false,
+    :energy_reserve => true ? energy_reserve : false,
+    # :μ_up => μ_up,
+    # :μ_dn => μ_dn)
+  )
   return out
 end
+
+function enrich_with_μ_and_reserves(config, μ_config, required_reserve, required_energy_reserve)
+  # This function enriches the configuration with the μ_up and μ_dn parameters
+  # It is used for the deterministic unit commitment model
+  config = copy(config)
+  config[:μ_up] = μ_config.value.up
+  config[:μ_dn] = μ_config.value.down
+  
+  if config[:energy_reserve] #  change of boolean to df
+    config[:energy_reserve] = required_energy_reserve
+    config[:reserve] = nothing
+  elseif  config[:reserve] #  change of boolean to df
+    # config[:reserve] = generate_reserves_old(loads, gen_variable, μ_config
+    config[:reserve] = required_reserve
+    config[:energy_reserve] = nothing
+  else
+    error("Neither energy_reserve nor reserve is set to true in the configuration.")
+  end
+  return config
+end
+
 
 function generate_reserves_old(loads, gen_variable, margin_percentage, baseload = 0)
   # deprecated
