@@ -2,7 +2,7 @@ using DataFrames
 include("./deterministic.jl")
 include("./stochastic.jl")
 
-function construct_deterministic_unit_commitment(gen_df, loads, gen_variable, mip_gap, storage, ramp_constraints; kwargs...)
+function construct_deterministic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints; kwargs...)
     println("Constructing DUC...")
     reserve = get(kwargs, :reserve, nothing)
     energy_reserve = get(kwargs, :energy_reserve, nothing)
@@ -15,7 +15,7 @@ function construct_deterministic_unit_commitment(gen_df, loads, gen_variable, mi
     bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
     thermal_reserve = get(kwargs, :thermal_reserve, false)
     naive_envelopes = get(kwargs, :naive_envelopes, false)
-    sets =  get_sets(gen_df, loads)
+    sets =  get_sets(gen_df)
     
     μ_up = get(kwargs, :μ_up, 1)
     μ_dn = get(kwargs, :μ_dn, 1)
@@ -29,10 +29,10 @@ function construct_deterministic_unit_commitment(gen_df, loads, gen_variable, mi
     else
         μ_dn = Dict(sets.T .=> μ_dn)  
     end
-    uc = DUC(gen_df, loads, gen_variable, mip_gap)
+    uc = DUC(gen_df, gen_variable, mip_gap)
     if !isnothing(storage)
         println("Adding storage...")
-        add_storage(uc, storage, loads, gen_df, sets)
+        add_storage(uc, storage, gen_df, sets)
     end
     if ramp_constraints
         println("Adding ramp constraints...")   
@@ -40,11 +40,11 @@ function construct_deterministic_unit_commitment(gen_df, loads, gen_variable, mi
     end
     if !isnothing(reserve) 
         println("Adding reserve constraints...")
-        add_reserve_constraints(uc, reserve, loads, gen_df, storage, bidirectional_storage_reserve, storage_envelopes, naive_envelopes, thermal_reserve, storage_reserve_repartition, μ_up, μ_dn, VRESERVE, VSRESUP, VSRESDN, sets)
+        add_reserve_constraints(uc, reserve, gen_df, storage, bidirectional_storage_reserve, storage_envelopes, naive_envelopes, thermal_reserve, storage_reserve_repartition, μ_up, μ_dn, VRESERVE, VSRESUP, VSRESDN, sets)
     end
     if !isnothing(energy_reserve)
         println("Adding energy reserve constraints...")
-        add_energy_reserve_constraints(uc, energy_reserve, loads, gen_df, storage, storage_envelopes, storage_link_constraint, thermal_reserve, μ_up, μ_dn, VRESERVE, VSRESUP, VSRESDN, sets)
+        add_energy_reserve_constraints(uc, energy_reserve, gen_df, storage, storage_envelopes, storage_link_constraint, thermal_reserve, μ_up, μ_dn, VRESERVE, VSRESUP, VSRESDN, sets)
     end
     return uc
 end
@@ -55,11 +55,11 @@ function construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, sto
     uc = SUC(gen_df, gen_variable, scenarios, mip_gap, VLOL, VLGEN)
     if !isnothing(storage)
         println("Adding storage...")
-        add_storage_s(uc, storage, scenarios, get_sets(gen_df, scenarios.demand, scenarios.probability), expected_min_SOE) # TODO: This function is meant to be used within SUC
+        add_storage_s(uc, storage, scenarios, get_sets(gen_df, scenarios.probability), expected_min_SOE) # TODO: This function is meant to be used within SUC
     end
     if ramp_constraints
         println("Adding ramp constraints...")   
-        add_ramp_constraints_s(uc, gen_df, get_sets(gen_df, scenarios.demand, scenarios.probability)) # TODO: This function is meant to be used within SUC
+        add_ramp_constraints_s(uc, gen_df, get_sets(gen_df, scenarios.probability)) # TODO: This function is meant to be used within SUC
     end
     return uc
 end
@@ -69,7 +69,7 @@ function update_time_dependent_data(model, loads_df, gen_variable, required_rese
     println("Updating DUC model with time-dependent data...")
     # update_loads(model, loads_df)
     # update_gen_variable(model, gen_variable)
-
+    update_parameter_value(model, :p_DEMAND, loads_df[:,:demand])
 
     if !isnothing(required_reserve) & isnothing(required_energy_reserve)
         update_parameter_value(model, :RRESUP, required_reserve[:,:reserve_up_MW])
@@ -79,6 +79,7 @@ function update_time_dependent_data(model, loads_df, gen_variable, required_rese
     # if !isnothing(energy_reserve) &&  isnothing(reserve)
     #     update_energy_reserve(model, energy_reserve)
     # end
+    println("...done")
     return model
 end 
 
@@ -91,13 +92,13 @@ function construct_unit_commitment_(gen_df; scenarios, kwargs...)
     VLOL = get(kwargs, :VLOL, 1e4) # SUC
     VLGEN = get(kwargs, :VLGEN, 0) # SUC
     if isnothing(scenarios)
-        return construct_deterministic_unit_commitment(gen_df, loads, gen_variable, mip_gap, storage, ramp_constraints; kwargs...)
+        return construct_deterministic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints; kwargs...)
     else
         return construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints, scenarios, expected_min_SOE, VLOL, VLGEN)
     end
 end
 
-function construct_unit_commitment(gen_df, loads, gen_variable; scenarios, kwargs...)
+function construct_unit_commitment(gen_df, gen_variable; scenarios, kwargs...)
     storage = get(kwargs, :storage, nothing)
     ramp_constraints = get(kwargs, :ramp_constraints, true)
     mip_gap = get(kwargs, :mip_gap, 1e-8)
@@ -105,7 +106,7 @@ function construct_unit_commitment(gen_df, loads, gen_variable; scenarios, kwarg
     VLOL = get(kwargs, :VLOL, 1e4)  
     VLGEN = get(kwargs, :VLGEN, 0)
     if isnothing(scenarios)
-        return construct_deterministic_unit_commitment(gen_df, loads, gen_variable, mip_gap, storage, ramp_constraints; kwargs...)
+        return construct_deterministic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints; kwargs...)
     else
         return construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints, scenarios, expected_min_SOE, VLOL, VLGEN)
     end

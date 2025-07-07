@@ -2,11 +2,10 @@ include("./config.jl")
 
 function update_parameter_value(model, key, value)
   # Updates the value of a parameter in the model
-  println("Updating parameter $key value")
+  println("$key")
   for idx in eachindex(model[key])
     set_parameter_value(model[key][idx], value[idx])
   end
-  println("...done")
   end
 
 function remove_variable_constraint(model, key, delete_ = true)
@@ -44,13 +43,13 @@ function create_generators_sets(gen_df)
   return G, G_thermal, G_nonthermal, G_var, G_nonvar, G_nt_nonvar
 end
 
-function create_time_sets(loads)
+function create_time_sets()
   return collect(1:g_HORIZON_LENGTH), collect(1:g_HORIZON_LENGTH-1)
 end
 
-function get_sets(gen_df, demand, probability = nothing) #stochastic
+function get_sets(gen_df, probability = nothing) #stochastic
   G, G_thermal, G_nonthermal, G_var, G_nonvar, G_nt_nonvar = create_generators_sets(gen_df)
-  T, T_red = create_time_sets(demand)
+  T, T_red = create_time_sets()
   out = (
       G = G,
       G_thermal = G_thermal,
