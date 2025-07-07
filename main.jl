@@ -290,7 +290,6 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         # end
         uc = construct_unit_commitment(
             gen_df,
-            loads_df,
             gen_variable_df;
             scenarios = nothing,
             config...

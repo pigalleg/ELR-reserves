@@ -4,7 +4,7 @@ using Gurobi
 # include("../post_processing.jl")
 include("./utils.jl")
 
-function DUC(gen_df, loads, gen_variable, mip_gap)
+function DUC(gen_df, gen_variable, mip_gap)
     # model = direct_model(Gurobi.Optimizer(GRB_ENV ))
     
     model = Model(Gurobi.Optimizer)
@@ -16,7 +16,7 @@ function DUC(gen_df, loads, gen_variable, mip_gap)
     set_optimizer_attribute(model, "OutputFlag", 0)
     # model = Model(HiGHS.Optimizer)
     # set_optimizer_attribute(model, "mip_rel_gap", mip_gap)
-    sets = get_sets(gen_df, loads)
+    sets = get_sets(gen_df)
     G = sets.G
     G_thermal = sets.G_thermal
     G_var = sets.G_var
@@ -24,14 +24,16 @@ function DUC(gen_df, loads, gen_variable, mip_gap)
     G_nt_nonvar = sets.G_nt_nonvar
     T = sets.T
     T_red = sets.T_red
-    # G, G_thermal, _, G_var, G_nonvar, G_nt_nonvar = create_generators_sets(gen_df)
-    # T, T_red = create_time_sets(loads)
+
+    @variable(model, p_DEMAND[t in T] in Parameter(0.0)) # time-dependet data
+    @variable(model, p_)
     @variables(model, begin
         GEN[G, T]  >= 0     # generation
         COMMIT[G_thermal, T], Bin # commitment status (Bin=binary)
         START[G_thermal, T], Bin  # startup decision
         SHUT[G_thermal, T], Bin   # shutdown decision
     end)
+    
               
   # Objective function
       # Sum of variable costs + start-up costs for all generators and time periods
@@ -61,7 +63,7 @@ function DUC(gen_df, loads, gen_variable, mip_gap)
         sum(GEN[g,t] for g in G)
     )
     @constraint(model, SupplyDemandBalance[t in T], 
-        SupplyDemand[t] == loads[loads.hour .== t,:demand][1]
+        SupplyDemand[t] == p_DEMAND[t]
     )
 
     # Capacity constraints 
@@ -81,12 +83,14 @@ function DUC(gen_df, loads, gen_variable, mip_gap)
     # 3. variable generation, accounting for hourly capacity factor
     # TODO: The way this constraint is declared does not follow general style
     # Needs to be redefined at each ED
-    @constraint(model, Cap_var[g in 1:nrow(gen_variable)], 
-            GEN[gen_variable[g,:r_id], gen_variable[g,:hour] ] <= 
-                        gen_variable[g,:cf] *
-                        gen_variable[g,:existing_cap_mw]
-                    )
-
+    # @constraint(model, Cap_var[g in 1:nrow(gen_variable)], 
+    #         GEN[gen_variable[g,:r_id], gen_variable[g,:hour] ] <= 
+    #                     gen_variable[g,:cf] *
+    #                     gen_variable[g,:existing_cap_mw]
+    #                 )
+    @constraint(model, Cap_var[g in G_var, t in T],
+        GEN[g,t] <= gen_variable[(gen_variable.r_id .== g) .& (gen_variable.hour .== t),:max_production_mw][1]
+    )
     # Unit commitment constraints
     # 1. Minimum up time
     @constraint(model, Startup[g in G_thermal, t in T],
@@ -105,13 +109,14 @@ function DUC(gen_df, loads, gen_variable, mip_gap)
     return model
 end
 
-function add_storage(model, storage, loads, gen_df, sets)
+function add_storage(model, storage, gen_df, sets)
     T = sets.T 
     T_incr = copy(T)
     pushfirst!(T_incr, T_incr[1]-1) # T_incr = [t[1]-1,T]
     S = create_storage_sets(storage)
     
     GEN = model[:GEN]
+    p_DEMAND = model[:p_DEMAND]
     # START = model[:START]
     @variables(model, begin
         CH[S,T] >= 0
@@ -144,7 +149,7 @@ function add_storage(model, storage, loads, gen_df, sets)
     delete.(model, SupplyDemandBalance) # Constraints must be deleted also
     unregister(model, :SupplyDemandBalance)
     @constraint(model, SupplyDemandBalance[t in T], 
-        SupplyDemand[t] == loads[loads.hour .== t,:demand][1]
+        SupplyDemand[t] == p_DEMAND[t]
     )
 
     # Charging-discharging logic
@@ -310,7 +315,7 @@ function add_storage_reserve_power_constraints(model, storage, sets)
     )
 end
 
-function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{DataFrame, Nothing}, bidirectional_storage_reserve::Bool, storage_envelopes::Bool, naive_envelopes::Bool, thermal_reserve::Bool, storage_reserve_repartition::Union{Int64,Float64}, μ_up::Dict, μ_dn::Dict, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
+function add_reserve_constraints(model, reserve, gen_df, storage::Union{DataFrame, Nothing}, bidirectional_storage_reserve::Bool, storage_envelopes::Bool, naive_envelopes::Bool, thermal_reserve::Bool, storage_reserve_repartition::Union{Int64,Float64}, μ_up::Dict, μ_dn::Dict, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
     G_thermal = sets.G_thermal
     T = sets.T
     T_red = sets.T_red
@@ -334,8 +339,8 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
     @variable(model, VSRESUP[t in T] in Parameter(VSRESUP[t])) # for post-processing purposes
     @variable(model, VSRESDN[t in T] in Parameter(VSRESDN[t])) # for post-processing purposes
     
-    @variable(model, RRESUP[t in T] in Parameter(0.0))
-    @variable(model, RRESDN[t in T] in Parameter(0.0))
+    @variable(model, RRESUP[t in T] in Parameter(0.0)) # time-dependent data
+    @variable(model, RRESDN[t in T] in Parameter(0.0)) # time-dependent data
 
     @expression(model, ReservePenalizationCost,
         VRESERVE*sum(RESUP[g,t] + RESDN[g,t] for g in G_reserve, t in T)
@@ -400,7 +405,7 @@ function add_reserve_constraints(model, reserve, loads, gen_df, storage::Union{D
 
         if storage_envelopes # TODO: change this to default when reserves are active
             println("Adding storage envelopes...")
-            add_envelope_constraints(model, loads, storage, μ_up, μ_dn, naive_envelopes)
+            add_envelope_constraints(model, storage, μ_up, μ_dn, naive_envelopes)
         end
         if storage_reserve_repartition >=0
             @warn "Storage reserve repartition is currently disabled. No constraints are being added."
@@ -441,7 +446,7 @@ function add_storage_reserve_repartition(model, reserve, storage_reserve_reparti
     )
 end
 
-function add_envelope_constraints(model, loads, storage, μ_up, μ_dn, naive_envelopes = false)
+function add_envelope_constraints(model, storage, μ_up, μ_dn, naive_envelopes = false)
     S = create_storage_sets(storage)
     RESUPCH = model[:RESUPCH]
     RESDNCH = model[:RESDNCH]
@@ -451,7 +456,7 @@ function add_envelope_constraints(model, loads, storage, μ_up, μ_dn, naive_env
     SOE = model[:SOE]
     CH = model[:CH]
     DIS = model[:DIS]
-    T, _ =  create_time_sets(loads)
+    T, _ =  create_time_sets()
     T_incr = copy(T)
     pushfirst!(T_incr, T_incr[1]-1)
     @variables(model, begin
@@ -499,7 +504,7 @@ function add_envelope_constraints(model, loads, storage, μ_up, μ_dn, naive_env
     )
 end
 
-function add_energy_reserve_constraints(model, reserve, loads, gen_df, storage::Union{DataFrame, Nothing}, storage_envelopes::Bool, storage_link_constraint::Bool, thermal_reserve::Bool, μ_up::Dict, μ_dn::Dict, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
+function add_energy_reserve_constraints(model, reserve, gen_df, storage::Union{DataFrame, Nothing}, storage_envelopes::Bool, storage_link_constraint::Bool, thermal_reserve::Bool, μ_up::Dict, μ_dn::Dict, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
     #TODO: include diagonal ramp reserves
     G_thermal = sets.G_thermal
     T = sets.T

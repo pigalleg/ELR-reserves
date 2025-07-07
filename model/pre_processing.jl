@@ -270,6 +270,7 @@ function pre_process_load_gen_variable(gen_df, loads_df, gen_variable)
   join_on = intersect([:day, :hour], propertynames(gen_variable))
   gen_variable = select(gen_variable, union(join_on, [:full_id, :r_id, :existing_cap_mw]), [:cf_1, :cf] =>ByRow(coalesce) => [:cf]) # We then select columns :cf_1, then :cf and rename them to :cf
   # gen_variable[gen_variable.full_id.== g_NET_GENERAION_FULL_ID, :existing_cap_mw] .= installed_capacity
+  gen_variable.max_production_mw = gen_variable.cf .* gen_variable.existing_cap_mw # production = cf * existing capacity
   return gen_df, loads_df, sort(gen_variable,union([:r_id], join_on))
 end
 
