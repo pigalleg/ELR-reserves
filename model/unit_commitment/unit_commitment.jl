@@ -4,8 +4,8 @@ include("./stochastic.jl")
 
 function construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_constraints; kwargs...)
     println("Constructing DUC...")
-    reserve = get(kwargs, :reserve, nothing)
-    energy_reserve = get(kwargs, :energy_reserve, nothing)
+    reserve = get(kwargs, :reserve, false)
+    energy_reserve = get(kwargs, :energy_reserve, false)
     storage_envelopes = get(kwargs, :storage_envelopes, true)
     storage_link_constraint =  get(kwargs, :storage_link_constraint, false)
     storage_reserve_repartition =  get(kwargs, :storage_reserve_repartition, -1) # -1 means no repartitioning, 0 means no reserve for storage, and any other positive number is the percentage of the reserve that should be allocated to storage
@@ -38,11 +38,11 @@ function construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_
         println("Adding ramp constraints...")   
         add_ramp_constraints(uc, gen_df, sets)
     end
-    if !isnothing(reserve) 
+    if reserve
         println("Adding reserve constraints...")
-        add_reserve_constraints(uc, reserve, gen_df, storage, bidirectional_storage_reserve, storage_envelopes, naive_envelopes, thermal_reserve, storage_reserve_repartition, μ_up, μ_dn, VRESERVE, VSRESUP, VSRESDN, sets)
+        add_reserve_constraints(uc, gen_df, storage, bidirectional_storage_reserve, storage_envelopes, naive_envelopes, thermal_reserve, storage_reserve_repartition, μ_up, μ_dn, VRESERVE, VSRESUP, VSRESDN, sets)
     end
-    if !isnothing(energy_reserve)
+    if energy_reserve
         println("Adding energy reserve constraints...")
         add_energy_reserve_constraints(uc, energy_reserve, gen_df, storage, storage_envelopes, storage_link_constraint, thermal_reserve, μ_up, μ_dn, VRESERVE, VSRESUP, VSRESDN, sets)
     end
@@ -64,7 +64,7 @@ function construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, sto
     return uc
 end
 
-function update_time_dependent_data(model, loads_df, gen_variable, required_reserve, required_energy_reserve)
+function update_time_dependent_data(model, loads_df, gen_variable, required_reserve, required_energy_reserve, energy_reserve)
     function gen_variable_to_matrix(gen_variable)
         # convert gen_variable to a matrix with columns: r_id, rows = :hour, and values= max_production_mw
         unstack_df = unstack(gen_variable,:r_id, :hour, :max_production_mw)
@@ -77,7 +77,7 @@ function update_time_dependent_data(model, loads_df, gen_variable, required_rese
     update_parameter_value(model, :p_MAX_GEN, gen_variable_to_matrix(gen_variable))
     update_parameter_value(model, :p_DEMAND, loads_df[:,:demand])
     
-    if !isnothing(required_reserve) & isnothing(required_energy_reserve)
+    if !energy_reserve
         update_parameter_value(model, :RRESUP, required_reserve[:,:reserve_up_MW])
         update_parameter_value(model, :RRESDN, required_reserve[:,:reserve_down_MW])
     end
