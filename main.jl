@@ -289,8 +289,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         #     config = merge(add_config, generate_configuration(μ_config.value.up, μ_config.value.down, storage_df, reserve = required_reserve))
         # end
         uc = construct_unit_commitment(
-            gen_df,
-            gen_variable_df;
+            gen_df;
             scenarios = nothing,
             config...
         )

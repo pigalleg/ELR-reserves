@@ -2,7 +2,7 @@ using DataFrames
 include("./deterministic.jl")
 include("./stochastic.jl")
 
-function construct_deterministic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints; kwargs...)
+function construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_constraints; kwargs...)
     println("Constructing DUC...")
     reserve = get(kwargs, :reserve, nothing)
     energy_reserve = get(kwargs, :energy_reserve, nothing)
@@ -29,7 +29,7 @@ function construct_deterministic_unit_commitment(gen_df, gen_variable, mip_gap, 
     else
         μ_dn = Dict(sets.T .=> μ_dn)  
     end
-    uc = DUC(gen_df, gen_variable, mip_gap)
+    uc = DUC(gen_df, mip_gap)
     if !isnothing(storage)
         println("Adding storage...")
         add_storage(uc, storage, gen_df, sets)
@@ -65,12 +65,18 @@ function construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, sto
 end
 
 function update_time_dependent_data(model, loads_df, gen_variable, required_reserve, required_energy_reserve)
+    function gen_variable_to_matrix(gen_variable)
+        # convert gen_variable to a matrix with columns: r_id, rows = :hour, and values= max_production_mw
+        unstack_df = unstack(gen_variable,:r_id, :hour, :max_production_mw)
+        return  Matrix(unstack_df[:,Not(:r_id)])
+    end
     # Updates the deterministic unit commitment model with new loads, gen_variable, reserve and energy_reserve
     println("Updating DUC model with time-dependent data...")
     # update_loads(model, loads_df)
     # update_gen_variable(model, gen_variable)
+    update_parameter_value(model, :p_MAX_GEN, gen_variable_to_matrix(gen_variable))
     update_parameter_value(model, :p_DEMAND, loads_df[:,:demand])
-
+    
     if !isnothing(required_reserve) & isnothing(required_energy_reserve)
         update_parameter_value(model, :RRESUP, required_reserve[:,:reserve_up_MW])
         update_parameter_value(model, :RRESDN, required_reserve[:,:reserve_down_MW])
@@ -84,21 +90,21 @@ function update_time_dependent_data(model, loads_df, gen_variable, required_rese
 end 
 
 
-function construct_unit_commitment_(gen_df; scenarios, kwargs...)
-    storage = get(kwargs, :storage, nothing)
-    ramp_constraints = get(kwargs, :ramp_constraints, true)
-    mip_gap = get(kwargs, :mip_gap, 1e-8)
-    expected_min_SOE = get(kwargs, :expected_min_SOE, false) # SUC
-    VLOL = get(kwargs, :VLOL, 1e4) # SUC
-    VLGEN = get(kwargs, :VLGEN, 0) # SUC
-    if isnothing(scenarios)
-        return construct_deterministic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints; kwargs...)
-    else
-        return construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints, scenarios, expected_min_SOE, VLOL, VLGEN)
-    end
-end
+# function construct_unit_commitment_(gen_df; scenarios, kwargs...)
+#     storage = get(kwargs, :storage, nothing)
+#     ramp_constraints = get(kwargs, :ramp_constraints, true)
+#     mip_gap = get(kwargs, :mip_gap, 1e-8)
+#     expected_min_SOE = get(kwargs, :expected_min_SOE, false) # SUC
+#     VLOL = get(kwargs, :VLOL, 1e4) # SUC
+#     VLGEN = get(kwargs, :VLGEN, 0) # SUC
+#     if isnothing(scenarios)
+#         return construct_deterministic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints; kwargs...)
+#     else
+#         return construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints, scenarios, expected_min_SOE, VLOL, VLGEN)
+#     end
+# end
 
-function construct_unit_commitment(gen_df, gen_variable; scenarios, kwargs...)
+function construct_unit_commitment(gen_df; scenarios, kwargs...)
     storage = get(kwargs, :storage, nothing)
     ramp_constraints = get(kwargs, :ramp_constraints, true)
     mip_gap = get(kwargs, :mip_gap, 1e-8)
@@ -106,20 +112,20 @@ function construct_unit_commitment(gen_df, gen_variable; scenarios, kwargs...)
     VLOL = get(kwargs, :VLOL, 1e4)  
     VLGEN = get(kwargs, :VLGEN, 0)
     if isnothing(scenarios)
-        return construct_deterministic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints; kwargs...)
+        return construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_constraints; kwargs...)
     else
         return construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints, scenarios, expected_min_SOE, VLOL, VLGEN)
     end
 end
 
-function solve_unit_commitment(gen_df, loads, gen_variable, scenarios = nothing; kwargs...)
-    uc = construct_unit_commitment(gen_df, loads, gen_variable, scenarios; kwargs...)
-    # relax_integrality(uc)
-    optimize!(uc)
-    if !is_solved_and_feasible(uc)
-        include("./debugging_ignore.jl")
-        @infiltrate   
-        # list = get_conflicting_constraints(uc)
-    end
-    return uc
-end
+# function solve_unit_commitment(gen_df, loads, gen_variable, scenarios = nothing; kwargs...)
+#     uc = construct_unit_commitment(gen_df, loads, gen_variable, scenarios; kwargs...)
+#     # relax_integrality(uc)
+#     optimize!(uc)
+#     if !is_solved_and_feasible(uc)
+#         include("./debugging_ignore.jl")
+#         @infiltrate   
+#         # list = get_conflicting_constraints(uc)
+#     end
+#     return uc
+# end
