@@ -4,7 +4,7 @@ using Gurobi
 # include("../post_processing.jl")
 include("./utils.jl")
 
-function DUC(gen_df, gen_variable, mip_gap)
+function DUC(gen_df, mip_gap)
     # model = direct_model(Gurobi.Optimizer(GRB_ENV ))
     
     model = Model(Gurobi.Optimizer)
@@ -25,8 +25,8 @@ function DUC(gen_df, gen_variable, mip_gap)
     T = sets.T
     T_red = sets.T_red
 
-    @variable(model, p_DEMAND[t in T] in Parameter(0.0)) # time-dependet data
-    @variable(model, p_)
+    @variable(model, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
+    @variable(model, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
     @variables(model, begin
         GEN[G, T]  >= 0     # generation
         COMMIT[G_thermal, T], Bin # commitment status (Bin=binary)
@@ -81,15 +81,8 @@ function DUC(gen_df, gen_variable, mip_gap)
     )
 
     # 3. variable generation, accounting for hourly capacity factor
-    # TODO: The way this constraint is declared does not follow general style
-    # Needs to be redefined at each ED
-    # @constraint(model, Cap_var[g in 1:nrow(gen_variable)], 
-    #         GEN[gen_variable[g,:r_id], gen_variable[g,:hour] ] <= 
-    #                     gen_variable[g,:cf] *
-    #                     gen_variable[g,:existing_cap_mw]
-    #                 )
     @constraint(model, Cap_var[g in G_var, t in T],
-        GEN[g,t] <= gen_variable[(gen_variable.r_id .== g) .& (gen_variable.hour .== t),:max_production_mw][1]
+        GEN[g,t] <= p_MAX_GEN[g,t] #gen_variable[(gen_variable.r_id .== g) .& (gen_variable.hour .== t),:max_production_mw][1]
     )
     # Unit commitment constraints
     # 1. Minimum up time
