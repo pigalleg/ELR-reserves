@@ -308,7 +308,7 @@ function add_storage_reserve_power_constraints(model, storage, sets)
     )
 end
 
-function add_reserve_constraints(model, reserve, gen_df, storage::Union{DataFrame, Nothing}, bidirectional_storage_reserve::Bool, storage_envelopes::Bool, naive_envelopes::Bool, thermal_reserve::Bool, storage_reserve_repartition::Union{Int64,Float64}, μ_up::Dict, μ_dn::Dict, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
+function add_reserve_constraints(model, gen_df, storage::Union{DataFrame, Nothing}, bidirectional_storage_reserve::Bool, storage_envelopes::Bool, naive_envelopes::Bool, thermal_reserve::Bool, storage_reserve_repartition::Union{Int64,Float64}, μ_up::Dict, μ_dn::Dict, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
     G_thermal = sets.G_thermal
     T = sets.T
     T_red = sets.T_red

@@ -282,7 +282,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         required_reserve = filter_day(day, required_reserve)
         required_energy_reserve = filter_day(day, required_energy_reserve)
         gen_df, loads_df, gen_variable_df = pre_process_load_gen_variable(gen_df_, loads_df, gen_variable_df) 
-        config = enrich_with_μ_and_reserves(basic_config, μ_config, required_reserve, required_energy_reserve)
+        config = enrich_with_μ(basic_config, μ_config)
         # if energy_reserve
         #     config = merge(add_config, generate_configuration(μ_config.value.up, μ_config.value.down, storage_df, energy_reserve = required_energy_reserve))
         # else
@@ -293,7 +293,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
             scenarios = nothing,
             config...
         )
-        update_time_dependent_data(uc, loads_df, gen_variable_df, config[:reserve], config[:energy_reserve])
+        update_time_dependent_data(uc, loads_df, gen_variable_df, required_reserve, required_energy_reserve, energy_reserve)
         optimize!(uc)
         # uc = solve_unit_commitment(gen_df, loads, gen_variable, scenarios = nothing; kwargs...)
         # uc = solve_unit_commitment(

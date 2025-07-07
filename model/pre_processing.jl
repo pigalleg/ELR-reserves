@@ -360,31 +360,31 @@ function generate_basic_configuration(storage_df, energy_reserve)
     :storage => storage_df,
     :enriched_solution => true,
     :storage_envelopes => true,
-    :reserve => true ? !energy_reserve : false,
-    :energy_reserve => true ? energy_reserve : false,
+    :reserve => !energy_reserve,
+    :energy_reserve => energy_reserve,
     # :μ_up => μ_up,
     # :μ_dn => μ_dn)
   )
   return out
 end
 
-function enrich_with_μ_and_reserves(config, μ_config, required_reserve, required_energy_reserve)
+function enrich_with_μ(config, μ_config)
   # This function enriches the configuration with the μ_up and μ_dn parameters
   # It is used for the deterministic unit commitment model
   config = copy(config)
   config[:μ_up] = μ_config.value.up
   config[:μ_dn] = μ_config.value.down
   
-  if config[:energy_reserve] #  change of boolean to df
-    config[:energy_reserve] = required_energy_reserve
-    config[:reserve] = nothing
-  elseif  config[:reserve] #  change of boolean to df
-    # config[:reserve] = generate_reserves_old(loads, gen_variable, μ_config
-    config[:reserve] = required_reserve
-    config[:energy_reserve] = nothing
-  else
-    error("Neither energy_reserve nor reserve is set to true in the configuration.")
-  end
+  # if config[:energy_reserve] #  change of boolean to df
+  #   config[:energy_reserve] = required_energy_reserve
+  #   config[:reserve] = nothing
+  # elseif  config[:reserve] #  change of boolean to df
+  #   # config[:reserve] = generate_reserves_old(loads, gen_variable, μ_config
+  #   config[:reserve] = required_reserve
+  #   config[:energy_reserve] = nothing
+  # else
+  #   error("Neither energy_reserve nor reserve is set to true in the configuration.")
+  # end
   return config
 end
 
