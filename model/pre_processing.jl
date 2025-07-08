@@ -2,6 +2,7 @@ using DataFrames
 using CSV
 using Distributions
 using LinearAlgebra
+include("./unit_commitment/utils.jl")
 
 g_DEFAULT_LOCATION = "./input/base_case"
 g_NET_GENERAION_FULL_ID = "net_generation"
@@ -368,24 +369,14 @@ function generate_basic_configuration(storage_df, energy_reserve)
   return out
 end
 
-function enrich_with_μ(config, μ_config)
-  # This function enriches the configuration with the μ_up and μ_dn parameters
-  # It is used for the deterministic unit commitment model
-  config = copy(config)
-  config[:μ_up] = μ_config.value.up
-  config[:μ_dn] = μ_config.value.down
-  
-  # if config[:energy_reserve] #  change of boolean to df
-  #   config[:energy_reserve] = required_energy_reserve
-  #   config[:reserve] = nothing
-  # elseif  config[:reserve] #  change of boolean to df
-  #   # config[:reserve] = generate_reserves_old(loads, gen_variable, μ_config
-  #   config[:reserve] = required_reserve
-  #   config[:energy_reserve] = nothing
-  # else
-  #   error("Neither energy_reserve nor reserve is set to true in the configuration.")
-  # end
-  return config
+function pre_process_μ(μ_up, μ_dn)
+  if ndims(μ_up) == 0 # if μ_up is a scalar we convert to vector, otherwise we assume it comes as a vector with the same length as horizon
+      μ_up = convert_to_vector(μ_up)
+  end 
+  if ndims(μ_dn) == 0
+      μ_dn = convert_to_vector(μ_dn)
+  end
+  return μ_up, μ_dn 
 end
 
 

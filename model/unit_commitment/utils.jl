@@ -82,3 +82,7 @@ function convert_to_indexed_vector(value, T)
       return Dict(T .=> value)
   end
 end
+
+function convert_to_vector(value)
+  return fill(value, g_HORIZON_LENGTH)
+end

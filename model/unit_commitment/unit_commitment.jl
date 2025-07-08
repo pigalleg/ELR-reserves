@@ -16,19 +16,7 @@ function construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_
     thermal_reserve = get(kwargs, :thermal_reserve, false)
     naive_envelopes = get(kwargs, :naive_envelopes, false)
     sets =  get_sets(gen_df)
-    
-    μ_up = get(kwargs, :μ_up, 1)
-    μ_dn = get(kwargs, :μ_dn, 1)
-    if ndims(μ_up) == 0 # if μ_up is a scalar we convert to vector, otherwise we assume it comes as a vector with the same length as T
-        μ_up = convert_to_indexed_vector(μ_up, sets.T)
-    else
-        μ_up = Dict(sets.T .=> μ_up)
-    end 
-    if ndims(μ_dn) == 0 # if μ_up is a scalar we convert to vector, otherwise we assume it comes as a vector with the same length as T
-        μ_dn = convert_to_indexed_vector(μ_dn, sets.T)
-    else
-        μ_dn = Dict(sets.T .=> μ_dn)  
-    end
+
     uc = DUC(gen_df, mip_gap)
     if !isnothing(storage)
         println("Adding storage...")
@@ -40,11 +28,11 @@ function construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_
     end
     if reserve
         println("Adding reserve constraints...")
-        add_reserve_constraints(uc, gen_df, storage, bidirectional_storage_reserve, storage_envelopes, naive_envelopes, thermal_reserve, storage_reserve_repartition, μ_up, μ_dn, VRESERVE, VSRESUP, VSRESDN, sets)
+        add_reserve_constraints(uc, gen_df, storage, bidirectional_storage_reserve, storage_envelopes, naive_envelopes, thermal_reserve, storage_reserve_repartition, VRESERVE, VSRESUP, VSRESDN, sets)
     end
     if energy_reserve
         println("Adding energy reserve constraints...")
-        add_energy_reserve_constraints(uc, gen_df, storage, storage_envelopes, storage_link_constraint, thermal_reserve, μ_up, μ_dn, VRESERVE, VSRESUP, VSRESDN, sets)
+        add_energy_reserve_constraints(uc, gen_df, storage, storage_envelopes, storage_link_constraint, thermal_reserve, VRESERVE, VSRESUP, VSRESDN, sets)
     end
     return uc
 end
@@ -64,23 +52,24 @@ function construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, sto
     return uc
 end
 
-function update_time_dependent_data(model, loads_df, gen_variable, required_reserve, required_energy_reserve, energy_reserve)
-    function to_matrix(gen_variable, row_key, column_key, value_key)
+function update_time_dependent_data(model, loads_df, gen_variable, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
+    function convert_to_matrix(gen_variable, row_key, column_key, value_key)
         return  Matrix(unstack(gen_variable, row_key, column_key, value_key)[:,Not(row_key)])
     end
     # Updates the deterministic unit commitment model with new loads, gen_variable, reserve and energy_reserve
     println("Updating DUC model with time-dependent data...")
     # update_loads(model, loads_df)
     # update_gen_variable(model, gen_variable)
-    update_parameter_value(model, :p_MAX_GEN, to_matrix(gen_variable, :r_id, :hour, :max_production_mw))
+    update_parameter_value(model, :p_MAX_GEN, convert_to_matrix(gen_variable, :r_id, :hour, :max_production_mw))
     update_parameter_value(model, :p_DEMAND, loads_df[:,:demand])
-    
+    update_parameter_value(model, :p_μ_UP, μ_up)
+    update_parameter_value(model, :p_μ_DN, μ_dn)
     if !energy_reserve
         update_parameter_value(model, :RRESUP, required_reserve[:,:reserve_up_MW])
         update_parameter_value(model, :RRESDN, required_reserve[:,:reserve_down_MW])
     else
-        update_parameter_value(model, :RERESUP, to_matrix(required_energy_reserve, :i_hour, :t_hour, :reserve_up_MW))
-        update_parameter_value(model, :RERESDN, to_matrix(required_energy_reserve, :i_hour, :t_hour, :reserve_down_MW))
+        update_parameter_value(model, :RERESUP, convert_to_matrix(required_energy_reserve, :i_hour, :t_hour, :reserve_up_MW))
+        update_parameter_value(model, :RERESDN, convert_to_matrix(required_energy_reserve, :i_hour, :t_hour, :reserve_down_MW))
     end
 
     # if !isnothing(energy_reserve) &&  isnothing(reserve)
