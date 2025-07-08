@@ -44,7 +44,7 @@ function construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_
     end
     if energy_reserve
         println("Adding energy reserve constraints...")
-        add_energy_reserve_constraints(uc, energy_reserve, gen_df, storage, storage_envelopes, storage_link_constraint, thermal_reserve, μ_up, μ_dn, VRESERVE, VSRESUP, VSRESDN, sets)
+        add_energy_reserve_constraints(uc, gen_df, storage, storage_envelopes, storage_link_constraint, thermal_reserve, μ_up, μ_dn, VRESERVE, VSRESUP, VSRESDN, sets)
     end
     return uc
 end
@@ -65,21 +65,22 @@ function construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, sto
 end
 
 function update_time_dependent_data(model, loads_df, gen_variable, required_reserve, required_energy_reserve, energy_reserve)
-    function gen_variable_to_matrix(gen_variable)
-        # convert gen_variable to a matrix with columns: r_id, rows = :hour, and values= max_production_mw
-        unstack_df = unstack(gen_variable,:r_id, :hour, :max_production_mw)
-        return  Matrix(unstack_df[:,Not(:r_id)])
+    function to_matrix(gen_variable, row_key, column_key, value_key)
+        return  Matrix(unstack(gen_variable, row_key, column_key, value_key)[:,Not(row_key)])
     end
     # Updates the deterministic unit commitment model with new loads, gen_variable, reserve and energy_reserve
     println("Updating DUC model with time-dependent data...")
     # update_loads(model, loads_df)
     # update_gen_variable(model, gen_variable)
-    update_parameter_value(model, :p_MAX_GEN, gen_variable_to_matrix(gen_variable))
+    update_parameter_value(model, :p_MAX_GEN, to_matrix(gen_variable, :r_id, :hour, :max_production_mw))
     update_parameter_value(model, :p_DEMAND, loads_df[:,:demand])
     
     if !energy_reserve
         update_parameter_value(model, :RRESUP, required_reserve[:,:reserve_up_MW])
         update_parameter_value(model, :RRESDN, required_reserve[:,:reserve_down_MW])
+    else
+        update_parameter_value(model, :RERESUP, to_matrix(required_energy_reserve, :i_hour, :t_hour, :reserve_up_MW))
+        update_parameter_value(model, :RERESDN, to_matrix(required_energy_reserve, :i_hour, :t_hour, :reserve_down_MW))
     end
 
     # if !isnothing(energy_reserve) &&  isnothing(reserve)

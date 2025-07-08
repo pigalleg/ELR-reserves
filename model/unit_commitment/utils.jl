@@ -4,7 +4,7 @@ function update_parameter_value(model, key, value)
   # Updates the value of a parameter in the model
   println("$key")
   for idx in eachindex(model[key])
-    set_parameter_value(model[key][idx], value[idx])
+    set_parameter_value(model[key][idx], value[CartesianIndex(idx)]) # when model[key] is DenseAxisArray, then idx is cartesian but if it is SparseAxisArray, then idx is a tuple 
   end
   end
 

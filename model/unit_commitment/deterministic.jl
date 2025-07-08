@@ -497,7 +497,7 @@ function add_envelope_constraints(model, storage, μ_up, μ_dn, naive_envelopes 
     )
 end
 
-function add_energy_reserve_constraints(model, reserve, gen_df, storage::Union{DataFrame, Nothing}, storage_envelopes::Bool, storage_link_constraint::Bool, thermal_reserve::Bool, μ_up::Dict, μ_dn::Dict, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
+function add_energy_reserve_constraints(model, gen_df, storage::Union{DataFrame, Nothing}, storage_envelopes::Bool, storage_link_constraint::Bool, thermal_reserve::Bool, μ_up::Dict, μ_dn::Dict, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
     #TODO: include diagonal ramp reserves
     G_thermal = sets.G_thermal
     T = sets.T
@@ -517,8 +517,8 @@ function add_energy_reserve_constraints(model, reserve, gen_df, storage::Union{D
     @variable(model, VRESERVE in Parameter(VRESERVE)) # used for postprocessing
     @variable(model, VSRESUP[t in keys(VSRESUP)] in Parameter(VSRESUP[t])) # for post-processing purposes
     @variable(model, VSRESDN[t in keys(VSRESDN)] in Parameter(VSRESDN[t]))
-    @variable(model, RERESUP[j in T, t in T; j <= t] in Parameter(reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_up_MW][1]))
-    @variable(model, RERESDN[j in T, t in T; j <= t] in Parameter(reserve[(reserve.i_hour .== j).&(reserve.t_hour .== t),:reserve_down_MW][1]))
+    @variable(model, RERESUP[j in T, t in T; j <= t] in Parameter(0))
+    @variable(model, RERESDN[j in T, t in T; j <= t] in Parameter(0))
 
     @variables(model, begin
         ERESUP[G_reserve, j in T, t in T; j <= t] >= 0
