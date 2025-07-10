@@ -1,0 +1,1 @@
+g_HORIZON_LENGTH = 24
