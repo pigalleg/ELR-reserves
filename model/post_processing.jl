@@ -75,6 +75,7 @@ function get_fixed_model(model)
     set_optimizer(model_, Gurobi.Optimizer)
     set_optimizer_attribute(model_, "OutputFlag", 0)
     set_optimizer_attribute(model_, "MIPGap", get_optimizer_attribute(model,"MIPGap")) 
+    set_optimizer_attribute(model_, "QCPDual", 1) # Enable dual variables for quadratically constrained programs
     optimize!(model_) # needs to be solved after copying. Check: objective_value(model_) == objective_value(model)
     fix_discrete_variables(model_) #https://jump.dev/JuMP.jl/stable/api/JuMP/#JuMP.fix_discrete_variables
     # Gurobi.GRBconverttofixed(backend(model_).optimizer.model) # https://docs.gurobi.com/projects/optimizer/en/current/reference/c/solving.html#c.GRBconverttofixed
