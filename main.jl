@@ -293,7 +293,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
             scenarios = nothing,
             config...
         )
-        update_time_dependent_data(uc, loads_df, gen_variable_df, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
+        update_time_dependent_data(uc, loads_df, gen_variable_df, storage_df, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
         optimize!(uc)
         # uc = solve_unit_commitment(gen_df, loads, gen_variable, scenarios = nothing; kwargs...)
         # uc = solve_unit_commitment(
