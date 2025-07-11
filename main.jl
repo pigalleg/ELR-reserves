@@ -270,12 +270,13 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
     
     gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve, required_energy_reserve = generate_deterministic_input_data(input_folder)
     config = merge(add_to_config, generate_basic_configuration(storage_df, energy_reserve))
-    uc = construct_unit_commitment(
+    uc_ = construct_unit_commitment(
         gen_df_;
         scenarios = nothing,
         config...
     )
     for day in days, μ_config in μ_configurations
+        
         loads_df = filter_day(day, loads_df_)
         gen_variable_df = filter_day(day, gen_variable_df_)
         random_loads_df = filter_day(day, random_loads_df_)
@@ -283,25 +284,12 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         required_energy_reserve = filter_day(day, required_energy_reserve)
         gen_df, loads_df, gen_variable_df = pre_process_load_gen_variable(gen_df_, loads_df, gen_variable_df)
         μ_up, μ_dn = pre_process_μ(μ_config.value.up, μ_config.value.down)
-        # if energy_reserve
-        #     config = merge(add_config, generate_configuration(μ_config.value.up, μ_config.value.down, storage_df, energy_reserve = required_energy_reserve))
-        # else
-        #     config = merge(add_config, generate_configuration(μ_config.value.up, μ_config.value.down, storage_df, reserve = required_reserve))
-        # end
-        # uc = construct_unit_commitment(
-        #     gen_df;
-        #     scenarios = nothing,
-        #     config...
-        # )
+        
+        uc = copy(uc_)
+        initialize_model(uc, config[:mip_gap])
         update_time_dependent_data(uc, loads_df, gen_variable_df, storage_df, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
         optimize!(uc)
-        # uc = solve_unit_commitment(gen_df, loads, gen_variable, scenarios = nothing; kwargs...)
-        # uc = solve_unit_commitment(
-        #     gen_df,
-        #     loads_df,
-        #     gen_variable_df;
-        #     config...
-        # )
+        
         s_uc[(day,μ_config.key)] = get_model_solution(uc, gen_df, gen_variable_df; loads = loads_df, config...)
         s_ed[(day,μ_config.key)] = solve_economic_dispatch_get_solution(
             uc,
