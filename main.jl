@@ -270,11 +270,11 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
     
     gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve, required_energy_reserve = generate_deterministic_input_data(input_folder)
     config = merge(add_to_config, generate_basic_configuration(storage_df, energy_reserve))
-    # uc = construct_unit_commitment(
-    #     gen_df_,
-    #     scenarios = nothing,
-    #     config = config
-    # )
+    uc = construct_unit_commitment(
+        gen_df_;
+        scenarios = nothing,
+        config...
+    )
     for day in days, μ_config in μ_configurations
         loads_df = filter_day(day, loads_df_)
         gen_variable_df = filter_day(day, gen_variable_df_)
@@ -288,11 +288,11 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         # else
         #     config = merge(add_config, generate_configuration(μ_config.value.up, μ_config.value.down, storage_df, reserve = required_reserve))
         # end
-        uc = construct_unit_commitment(
-            gen_df;
-            scenarios = nothing,
-            config...
-        )
+        # uc = construct_unit_commitment(
+        #     gen_df;
+        #     scenarios = nothing,
+        #     config...
+        # )
         update_time_dependent_data(uc, loads_df, gen_variable_df, storage_df, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
         optimize!(uc)
         # uc = solve_unit_commitment(gen_df, loads, gen_variable, scenarios = nothing; kwargs...)

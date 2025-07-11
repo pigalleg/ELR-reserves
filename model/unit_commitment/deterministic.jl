@@ -697,7 +697,8 @@ end
 function set_envelope_multipliers(model, μ_up, μ_dn, storage)
     # SOEUP[s,t]  == SOEUP[s,t-1] + (CH[s,t] + p_μ_DN[t]*RESDNCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] - p_μ_DN[t]*RESDNDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
     #SOEDN[s,t]  == SOEDN[s,t-1] + (CH[s,t] - p_μ_UP[t]*RESUPCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] + p_μ_UP[t]*RESUPDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
-    print("μ_up, μ_dn")
+    println("μ_up")
+    println("μ_dn")
     SOEUpEvol = model[:SOEUpEvol]
     SOEDnEvol = model[:SOEDnEvol]
     RESUPCH = model[:RESUPCH]
@@ -715,7 +716,8 @@ end
 function set_energy_envelope_multipliers(model, μ_up, μ_dn, storage)
     # ESOEUP[s,j,t]  == SOE[s,t] + p_μ_DN[t]*ERESDNCH[s,j,t]*storage[storage.r_id .== s,:charge_efficiency][1] + p_μ_DN[t]*ERESDNDIS[s,j,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
     # ESOEDN[s,j,t]  == SOE[s,t] - p_μ_UP[t]*ERESUPCH[s,j,t]*storage[storage.r_id .== s,:charge_efficiency][1] - p_μ_UP[t]*ERESUPDIS[s,j,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
-    print("μ_up, μ_dn")
+    println("μ_up")
+    println("μ_dn")
     ESOEUpEvol = model[:ESOEUpEvol]
     ESOEDnEvol = model[:ESOEDnEvol]
     ERESUPCH = model[:ERESUPCH]
