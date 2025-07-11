@@ -17,7 +17,7 @@ function construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_
     naive_envelopes = get(kwargs, :naive_envelopes, false)
     sets =  get_sets(gen_df)
 
-    uc = DUC(gen_df, mip_gap)
+    uc = DUC(gen_df)
     if !isnothing(storage)
         println("Adding storage...")
         add_storage(uc, storage, gen_df, sets)
@@ -118,6 +118,7 @@ end
 #         include("./debugging_ignore.jl")
 #         @infiltrate   
 #         # list = get_conflicting_constraints(uc)
-#     end
+#     end   
 #     return uc
 # end
+
