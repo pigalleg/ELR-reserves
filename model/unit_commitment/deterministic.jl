@@ -453,26 +453,23 @@ function add_envelope_constraints(model, storage, naive_envelopes = false)
     T_incr = copy(T)
     pushfirst!(T_incr, T_incr[1]-1)
 
-    @variable(model, p_μ_UP[t in T] in Parameter(1.0))
-    @variable(model, p_μ_DN[t in T] in Parameter(1.0))
-    
     @variables(model, begin
         SOEUP[S, T_incr] >= 0
         SOEDN[S, T_incr] >= 0
     end)
     if !naive_envelopes
         @constraint(model, SOEUpEvol[s in S, t in T],
-            SOEUP[s,t]  == SOEUP[s,t-1] + (CH[s,t] + p_μ_DN[t]*RESDNCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] - p_μ_DN[t]*RESDNDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
+            SOEUP[s,t]  == SOEUP[s,t-1] + (CH[s,t] + RESDNCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] - RESDNDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
         ) #TODO: add delta_T
         @constraint(model, SOEDnEvol[s in S, t in T], 
-            SOEDN[s,t]  == SOEDN[s,t-1] + (CH[s,t] - p_μ_UP[t]*RESUPCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] + p_μ_UP[t]*RESUPDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
+            SOEDN[s,t]  == SOEDN[s,t-1] + (CH[s,t] - RESUPCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] + RESUPDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
         ) #TODO: add delta_T
     else
         @constraint(model, SOEUpEvol[s in S, t in T],
-            SOEUP[s,t]  == SOE[s,t] + p_μ_DN[t]*RESDNCH[s,t]*storage[storage.r_id .== s,:charge_efficiency][1] + p_μ_DN[t]*RESDNDIS[s,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
+            SOEUP[s,t]  == SOE[s,t] + RESDNCH[s,t]*storage[storage.r_id .== s,:charge_efficiency][1] + RESDNDIS[s,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
         ) 
         @constraint(model, SOEDnEvol[s in S, t in T], 
-            SOEDN[s,t]  == SOE[s,t] - p_μ_UP[t]*RESUPCH[s,t]*storage[storage.r_id .== s,:charge_efficiency][1] - p_μ_UP[t]*RESUPDIS[s,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
+            SOEDN[s,t]  == SOE[s,t] - RESUPCH[s,t]*storage[storage.r_id .== s,:charge_efficiency][1] - RESUPDIS[s,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
         )
     end
     # SOEUP_T_initial = SOE_T_initial
@@ -652,19 +649,16 @@ function add_energy_envelope_constraints(model, storage, sets)
     ERESDNCH = model[:ERESDNCH]
     ERESUPDIS = model[:ERESUPDIS]
     ERESDNDIS = model[:ERESDNDIS]
-    
-    @variable(model, p_μ_UP[t in T] in Parameter(1.0))
-    @variable(model, p_μ_DN[t in T] in Parameter(1.0))
 
     @variables(model, begin
         ESOEUP[S, j in T_incr, t in T_incr; j <= t] >= 0
         ESOEDN[S, j in T_incr, t in T_incr; j <= t] >= 0
     end)
     @constraint(model, ESOEUpEvol[s in S, j in T, t in T; j <= t],
-        ESOEUP[s,j,t]  == SOE[s,t] + p_μ_DN[t]*ERESDNCH[s,j,t]*storage[storage.r_id .== s,:charge_efficiency][1] + p_μ_DN[t]*ERESDNDIS[s,j,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
+        ESOEUP[s,j,t]  == SOE[s,t] + ERESDNCH[s,j,t]*storage[storage.r_id .== s,:charge_efficiency][1] + ERESDNDIS[s,j,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
     )
     @constraint(model, ESOEDnEvol[s in S, j in T, t in T; j <= t], 
-        ESOEDN[s,j,t]  == SOE[s,t] - p_μ_UP[t]*ERESUPCH[s,j,t]*storage[storage.r_id .== s,:charge_efficiency][1] - p_μ_UP[t]*ERESUPDIS[s,j,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
+        ESOEDN[s,j,t]  == SOE[s,t] - ERESUPCH[s,j,t]*storage[storage.r_id .== s,:charge_efficiency][1] - ERESUPDIS[s,j,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
     )
 
     # ESOEUP[T_initial,T_initial] = SOE[T_initial]
@@ -697,4 +691,43 @@ function add_energy_envelope_constraints(model, storage, sets)
     @constraint(model, ESOEDNMin[s in S, j in T, t in T; j <= t],
         ESOEDN[s,j,t] >= storage[storage.r_id .== s,:min_energy_mwh][1]
     )
+end
+
+
+function set_envelope_multipliers(model, μ_up, μ_dn, storage)
+    # SOEUP[s,t]  == SOEUP[s,t-1] + (CH[s,t] + p_μ_DN[t]*RESDNCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] - p_μ_DN[t]*RESDNDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
+    #SOEDN[s,t]  == SOEDN[s,t-1] + (CH[s,t] - p_μ_UP[t]*RESUPCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] + p_μ_UP[t]*RESUPDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
+    print("Setting envelope multipliers...")
+    SOEUpEvol = model[:SOEUpEvol]
+    SOEDnEvol = model[:SOEDnEvol]
+    RESUPCH = model[:RESUPCH]
+    RESUPDIS = model[:RESUPDIS]
+    RESDNCH = model[:RESDNCH]
+    RESDNDIS = model[:RESDNDIS]
+    for s in axes(SOEUpEvol)[1], t in axes(SOEUpEvol)[2]
+        set_normalized_coefficient(SOEUpEvol[s,t], RESDNCH[s,t], -μ_dn[t]*storage[storage.r_id .== s,:charge_efficiency][1])
+        set_normalized_coefficient(SOEUpEvol[s,t], RESDNDIS[s,t], -μ_dn[t]/storage[storage.r_id .== s,:discharge_efficiency][1])
+        set_normalized_coefficient(SOEDnEvol[s,t], RESUPCH[s,t], μ_up[t]*storage[storage.r_id .== s,:charge_efficiency][1])
+        set_normalized_coefficient(SOEDnEvol[s,t], RESUPDIS[s,t], μ_dn[t]/storage[storage.r_id .== s,:discharge_efficiency][1])
+    end 
+    println(" done")
+end
+
+function set_energy_envelope_multipliers(model, μ_up, μ_dn, storage)
+    # ESOEUP[s,j,t]  == SOE[s,t] + p_μ_DN[t]*ERESDNCH[s,j,t]*storage[storage.r_id .== s,:charge_efficiency][1] + p_μ_DN[t]*ERESDNDIS[s,j,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
+    # ESOEDN[s,j,t]  == SOE[s,t] - p_μ_UP[t]*ERESUPCH[s,j,t]*storage[storage.r_id .== s,:charge_efficiency][1] - p_μ_UP[t]*ERESUPDIS[s,j,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
+    print("Setting energy envelope multipliers...")
+    ESOEUpEvol = model[:ESOEUpEvol]
+    ESOEDnEvol = model[:ESOEDnEvol]
+    ERESUPCH = model[:ERESUPCH]
+    ERESUPDIS = model[:ERESUPDIS]
+    ERESDNCH = model[:ERESDNCH]
+    ERESDNDIS = model[:ERESDNDIS]
+    for s in axes(ESOEUpEvol)[1], t in axes(ESOEUpEvol)[2]
+        set_normalized_coefficient(ESOEUpEvol[s,t], ERESDNCH[s,t], -μ_dn[t]*storage[storage.r_id .== s,:charge_efficiency][1])
+        set_normalized_coefficient(ESOEUpEvol[s,t], ERESDNDIS[s,t], -μ_dn[t]/storage[storage.r_id .== s,:discharge_efficiency][1])
+        set_normalized_coefficient(ESOEDnEvol[s,t], ERESUPCH[s,t], μ_up[t]*storage[storage.r_id .== s,:charge_efficiency][1])
+        set_normalized_coefficient(ESOEDnEvol[s,t], ERESUPDIS[s,t], μ_dn[t]/storage[storage.r_id .== s,:discharge_efficiency][1])
+    end 
+    println(" done")
 end
