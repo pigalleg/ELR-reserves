@@ -53,9 +53,6 @@ function construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, sto
 end
 
 function update_time_dependent_data(model, loads, gen_variable, storage, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
-    function convert_to_matrix(gen_variable, row_key, column_key, value_key)
-        return  Matrix(unstack(gen_variable, row_key, column_key, value_key)[:,Not(row_key)])
-    end
     # Updates the deterministic unit commitment model with new loads, gen_variable, reserve and energy_reserve
     println("Updating DUC model with time-dependent data...")
     # update_loads(model, loads)

@@ -429,30 +429,30 @@ function remove_energy_and_reserve_constraints(model)
     end
 end
 
-function update_demand(model, loads, key = DEMAND)
-    # Update demand values and introduces LOL at supply-demand balance
-    T, __ = create_time_sets()
-    LOL = model[LOL_]
+# function update_demand(model, loads, key = DEMAND)
+#     # Update demand values and introduces LOL at supply-demand balance
+#     T, __ = create_time_sets()
+#     LOL = model[LOL_]
 
-    if haskey(model, :LOLMax) remove_variable_constraint(model, :LOLMax) end
-    @constraint(model, LOLMax[t in T],
-        LOL[t]<= loads[loads.hour .== t, key][1]    
-    )
+#     if haskey(model, :LOLMax) remove_variable_constraint(model, :LOLMax) end
+#     @constraint(model, LOLMax[t in T],
+#         LOL[t]<= loads[loads.hour .== t, key][1]    
+#     )
 
-    SupplyDemand = model[:SupplyDemand]
-    remove_variable_constraint(model, :SupplyDemandBalance)
-    @constraint(model, SupplyDemandBalance[t in T], 
-        SupplyDemand[t] == loads[loads.hour .== t, key][1]
-    )
-end
+#     SupplyDemand = model[:SupplyDemand]
+#     remove_variable_constraint(model, :SupplyDemandBalance)
+#     @constraint(model, SupplyDemandBalance[t in T], 
+#         SupplyDemand[t] == loads[loads.hour .== t, key][1]
+#     )
+# end
 
-function update_generation(model, gen_variable)
-    remove_variable_constraint(model, :Cap_var)
-    GEN = model[:GEN]
-    @constraint(model, Cap_var[i in 1:nrow(gen_variable)], 
-        GEN[gen_variable[i,:r_id], gen_variable[i,:hour] ] <= gen_variable[i,:cf]*gen_variable[i,:existing_cap_mw]
-    )
-end
+# function update_generation(model, gen_variable)
+#     remove_variable_constraint(model, :Cap_var)
+#     GEN = model[:GEN]
+#     @constraint(model, Cap_var[i in 1:nrow(gen_variable)], 
+#         GEN[gen_variable[i,:r_id], gen_variable[i,:hour] ] <= gen_variable[i,:cf]*gen_variable[i,:existing_cap_mw]
+#     )
+# end
 
 function merge_solutions(solutions::Dict, merge_keys = [ITERATION])
     #TODO can be done more elegantly
@@ -511,8 +511,10 @@ function solve_economic_dispatch_get_solution(uc, gen_df, loads, gen_variable; k
         println("")
         println("Montecarlo iteration: $k")
         gen_df_k, loads_df_k, gen_variable_k = pre_process_load_gen_variable(gen_df, rename(loads[!,[HOUR,k]], k=>DEMAND), gen_variable) # remove negative net load to convert it into net generation asset
-        update_demand(ed, loads_df_k) # update demand values with net load without negative values
-        update_generation(ed, gen_variable_k) # update generation values with net generation asset
+        # update_demand(ed, loads_df_k) # update demand values with net load without negative values
+        # update_generation(ed, gen_variable_k) # update generation values with net generation asset
+        update_parameter_value(ed, :p_DEMAND, loads_df_k[:,:demand])
+        update_parameter_value(ed, :p_MAX_GEN, convert_to_matrix(gen_variable_k, :r_id, :hour, :max_production_mw))
         if (k == get(kwargs, :save_constraints_status_for_demand, false)) 
             kwargs[:save_constraints_status] = true
         else
