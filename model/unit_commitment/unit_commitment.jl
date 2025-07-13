@@ -52,14 +52,13 @@ function construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, sto
     return uc
 end
 
-function update_time_dependent_data(model, loads, gen_variable, storage, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
+function update_daily_data(model, loads, gen_variable, storage, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
     # Updates the deterministic unit commitment model with new loads, gen_variable, reserve and energy_reserve
     println("Updating DUC model with time-dependent data...")
     # update_loads(model, loads)
     # update_gen_variable(model, gen_variable)
     update_parameter_value(model, :p_MAX_GEN, convert_to_matrix(gen_variable, :r_id, :hour, :max_production_mw))
     update_parameter_value(model, :p_DEMAND, loads[:,:demand])
-    
     # update_parameter_value(model, :p_μ_UP, μ_up)
     # update_parameter_value(model, :p_μ_DN, μ_dn)
     if !energy_reserve

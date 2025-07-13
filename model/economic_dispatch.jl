@@ -38,7 +38,7 @@ function get_multipliers(model)
 end
 
 # TODO change gen_variable => gen_varialbe_df, loads => loads_df
-function construct_economic_dispatch(uc, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool, variables_to_constrain::Vector{Symbol}, VLOL::Union{Float64,Int64,Vector}, VLGEN::Union{Float64,Int64,Vector})
+function ED(uc, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool, variables_to_constrain::Vector{Symbol}, VLOL::Union{Float64,Int64,Vector}, VLGEN::Union{Float64,Int64,Vector})
     println("Constructing ED...")
     # Outputs EC by fixing variables of UC
     T, __ = create_time_sets()
@@ -74,6 +74,11 @@ function construct_economic_dispatch(uc, constrain_SOE_by_envelopes::Bool, const
     remove_variable_constraint(ed, :SupplyDemand, false)
     @expression(ed, SupplyDemand[t in T],
         SupplyDemand[t] + LOL[t] - LGEN[t]
+    )
+    p_DEMAND = ed[:p_DEMAND]
+    remove_variable_constraint(ed, :SupplyDemandBalance, false)
+    @constraint(ed, SupplyDemandBalance[t in T], 
+        SupplyDemand[t] == p_DEMAND[t]
     )
     remove_energy_and_reserve_constraints(ed)
     println("...done")
@@ -480,6 +485,7 @@ function solve_economic_dispatch_(ed, gen_df, loads, gen_variable; kwargs...)
     return get_model_solution(ed, gen_df, gen_variable; loads = loads, kwargs...)
 end
 
+
 function solve_economic_dispatch_get_solution(uc, gen_df, loads, gen_variable; kwargs...)
     # Parsing arguments...
     # remove_reserve_constraints = get(kwargs, :remove_reserve_constraints, true)
@@ -502,7 +508,7 @@ function solve_economic_dispatch_get_solution(uc, gen_df, loads, gen_variable; k
     if constrain_SOE_by_envelopes
         variables_to_constrain = [GEN]
     end
-    ed = construct_economic_dispatch(uc, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain, VLOL, VLGEN)
+    ed = ED(uc, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain, VLOL, VLGEN)
     # save_model_to_file(ed,"ed")
     solutions = Dict()
     kwargs = Dict(kwargs)
@@ -515,6 +521,7 @@ function solve_economic_dispatch_get_solution(uc, gen_df, loads, gen_variable; k
         # update_generation(ed, gen_variable_k) # update generation values with net generation asset
         update_parameter_value(ed, :p_DEMAND, loads_df_k[:,:demand])
         update_parameter_value(ed, :p_MAX_GEN, convert_to_matrix(gen_variable_k, :r_id, :hour, :max_production_mw))
+        @infiltrate
         if (k == get(kwargs, :save_constraints_status_for_demand, false)) 
             kwargs[:save_constraints_status] = true
         else
