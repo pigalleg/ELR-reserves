@@ -1,5 +1,9 @@
 include("./config.jl")
 
+function convert_to_matrix(gen_variable, row_key, column_key, value_key)
+    return  Matrix(unstack(gen_variable, row_key, column_key, value_key)[:,Not(row_key)])
+end
+
 function update_parameter_value(model, key, value)
   # Updates the value of a parameter in the model
   println("$key")
