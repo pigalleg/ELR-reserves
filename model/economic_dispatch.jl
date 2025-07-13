@@ -521,7 +521,6 @@ function solve_economic_dispatch_get_solution(uc, gen_df, loads, gen_variable; k
         # update_generation(ed, gen_variable_k) # update generation values with net generation asset
         update_parameter_value(ed, :p_DEMAND, loads_df_k[:,:demand])
         update_parameter_value(ed, :p_MAX_GEN, convert_to_matrix(gen_variable_k, :r_id, :hour, :max_production_mw))
-        @infiltrate
         if (k == get(kwargs, :save_constraints_status_for_demand, false)) 
             kwargs[:save_constraints_status] = true
         else
