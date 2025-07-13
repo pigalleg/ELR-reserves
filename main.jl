@@ -275,6 +275,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         scenarios = nothing,
         config...
     )
+    # ed = construct_economic_dispatch()
     for day in days, μ_config in μ_configurations
         
         loads_df = filter_day(day, loads_df_)
@@ -287,10 +288,18 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         
         uc = copy(uc_)
         initialize_model(uc, config[:mip_gap])
-        update_time_dependent_data(uc, loads_df, gen_variable_df, storage_df, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
+
+        update_daily_data(uc, loads_df, gen_variable_df, storage_df, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
         optimize!(uc)
         
         s_uc[(day,μ_config.key)] = get_model_solution(uc, gen_df, gen_variable_df; loads = loads_df, config...)
+
+        # ed = construct_economic_dispatch(
+            # gen_df_;
+
+        # constrain_decision_variables(ed) # according to the uc's output
+        # solve_monte_carlo(ed, gen_df, random_loads_df, gen_variable_df; config)
+
         s_ed[(day,μ_config.key)] = solve_economic_dispatch_get_solution(
             uc,
             gen_df,
