@@ -68,8 +68,8 @@ function ED(uc, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidi
     # @constraint(ed,
     #     sum(LOL[t] for t in T) == 0 
     # )
+    
     # Update supply-demand balance expression
-    # Update of SupplyDemand constraint is performed within the solve_economic_dispatch's loop
     SupplyDemand = ed[:SupplyDemand]
     remove_variable_constraint(ed, :SupplyDemand, false)
     @expression(ed, SupplyDemand[t in T],
@@ -77,7 +77,7 @@ function ED(uc, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidi
     )
     p_DEMAND = ed[:p_DEMAND]
     remove_variable_constraint(ed, :SupplyDemandBalance, false)
-    @constraint(ed, SupplyDemandBalance[t in T], 
+    @constraint(ed, SupplyDemandBalance[t in T], # Update of SupplyDemand constraint is performed within the solve_economic_dispatch's loop
         SupplyDemand[t] == p_DEMAND[t]
     )
     remove_energy_and_reserve_constraints(ed)
