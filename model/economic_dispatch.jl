@@ -478,13 +478,9 @@ function solve_economic_dispatch_(ed, gen_df, loads, gen_variable; kwargs...)
         print("model not solved or feasible.")
         return get_nonfeasbile_model_information(ed)
     end
-    if get(kwargs, :save_constraints_status, false) # deprecated
-        save_constraints_status(ed, string(get(kwargs, :save_constraints_status_for_demand, nothing)))
-    end
     println("done")
     return get_model_solution(ed, gen_df, gen_variable; loads = loads, kwargs...)
 end
-
 
 function solve_economic_dispatch_get_solution(uc, gen_df, loads, gen_variable; kwargs...)
     # Parsing arguments...
@@ -495,15 +491,10 @@ function solve_economic_dispatch_get_solution(uc, gen_df, loads, gen_variable; k
     remove_variables_from_objective = get(kwargs, :remove_variables_from_objective, false)
     VLOL = get(kwargs, :VLOL, 1e4)
     VLGEN = get(kwargs, :VLGEN, 0)
-    reference_solution = get(kwargs, :reference_solution, nothing)
     bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
     constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
     # parsing end
     # uc = construct_unit_commitment(gen_df, loads[!,[HOUR, DEMAND]], gen_variable; kwargs...)
-    
-    if !isnothing(reference_solution)
-        uc = generate_alternative_model(uc, reference_solution)
-    end
     # optimize!(uc)
     if constrain_SOE_by_envelopes
         variables_to_constrain = [GEN]
@@ -526,6 +517,39 @@ function solve_economic_dispatch_get_solution(uc, gen_df, loads, gen_variable; k
         else
             kwargs[:save_constraints_status] = false
         end
+        solutions[k] = solve_economic_dispatch_(ed, gen_df_k, loads_df_k, gen_variable_k; kwargs...)
+    end
+    return merge_solutions(solutions)
+end
+
+function construct_economic_dispatch(uc; kwargs...)
+    # Parsing arguments...
+    # remove_reserve_constraints = get(kwargs, :remove_reserve_constraints, true)
+    constrain_dispatch = get(kwargs, :constrain_dispatch, true)
+    variables_to_constrain = get(kwargs, :variables_to_constrain, [GEN])
+    remove_variables_from_objective = get(kwargs, :remove_variables_from_objective, false)
+    VLOL = get(kwargs, :VLOL, 1e4)
+    VLGEN = get(kwargs, :VLGEN, 0)
+    bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
+    constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
+    # parsing end
+    if constrain_SOE_by_envelopes
+        variables_to_constrain = [GEN]
+    end
+    return ED(uc, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain, VLOL, VLGEN)
+end
+
+function launch_monte_carlo_get_solution(ed, gen_df, loads, gen_variable; kwargs...)
+    max_iterations = get(kwargs, :max_iterations, 100)
+    solutions = Dict()
+    kwargs = Dict(kwargs)
+    # At this point one idea would be to copy several instances of ed so all of them use the same input solution from uc
+    for k in first(propertynames(loads[!, Not([HOUR,:day])]), max_iterations)
+        println("")
+        println("Montecarlo iteration: $k")
+        gen_df_k, loads_df_k, gen_variable_k = pre_process_load_gen_variable(gen_df, rename(loads[!,[HOUR,k]], k=>DEMAND), gen_variable) # remove negative net load to convert it into net generation asset
+        update_parameter_value(ed, :p_DEMAND, loads_df_k[:,:demand])
+        update_parameter_value(ed, :p_MAX_GEN, convert_to_matrix(gen_variable_k, :r_id, :hour, :max_production_mw))
         solutions[k] = solve_economic_dispatch_(ed, gen_df_k, loads_df_k, gen_variable_k; kwargs...)
     end
     return merge_solutions(solutions)
