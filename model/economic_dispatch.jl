@@ -17,6 +17,29 @@ function get_variable_base_name(variable)
     return Symbol(match(r"([A-z]+)\[", name(first(variable)))[1])
 end
 
+function get_reserves_variables(model)
+    prepend = haskey(model, :ERESUP)
+    prepend_E(symbol_name, prepend) = !prepend ? symbol_name : Symbol("E"*string(symbol_name))
+    return Dict(
+        :res_up_var => model[prepend_E(:RESUP, prepend)],
+        :res_up_var_value => value.(model[prepend_E(:RESUP, prepend)]),
+        :res_dn_var => model[prepend_E(:RESDN, prepend)],
+        :res_dn_var_value => value.(model[prepend_E(:RESDN, prepend)]),
+        :res_up_ch_var =>  model[prepend_E(:RESUPCH, prepend)],
+        :res_up_ch_var_value => value.(model[prepend_E(:RESUPCH, prepend)]),
+        :res_up_dis_var =>  model[prepend_E(:RESUPDIS, prepend)],
+        :res_up_dis_var_value => value.(model[prepend_E(:RESUPDIS, prepend)]),
+        :res_dn_ch_var =>  model[prepend_E(:RESDNCH, prepend)],
+        :res_dn_ch_var_value => value.(model[prepend_E(:RESDNCH, prepend)]), 
+        :res_dn_dis_var =>  model[prepend_E(:RESDNDIS, prepend)],
+        :res_dn_dis_var_value => value.(model[prepend_E(:RESDNDIS, prepend)]), 
+    )
+end
+function get_variables_to_fix(model)
+    variables_to_fix =  [COMMIT, START, SHUT,:RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP]
+    return [(model[var], value.(model[var])) for var in variables_to_fix if haskey(model, var)]
+end
+
 function get_multipliers(model)
     CH = model[:CH]
     DIS = model[:DIS]
@@ -38,7 +61,7 @@ function get_multipliers(model)
 end
 
 # TODO change gen_variable => gen_varialbe_df, loads => loads_df
-function ED(uc, VLOL, VLGEN; config...)
+function ED(uc, VLOL, VLGEN, reserve_variables, variables_to_fix; config...)
     println("Constructing ED...")
     # Outputs EC by fixing variables of UC
     T, __ = create_time_sets()
@@ -53,9 +76,8 @@ function ED(uc, VLOL, VLGEN; config...)
     ed = uc # pointer, uc object will change
     # set_optimizer_attribute(ed, "TimeLimit", 60.0)    # 60 seconds
     add_envelopes_UC(ed)
-    update_dispatch_restrictions(ed; config...)
+    update_dispatch_restrictions(ed, reserve_variables, variables_to_fix; config...)
     constraint_SOE_final_to_envelopes_UC(ed) # redundant when constrain_SOE_by_envelopes == true
-    
     # update objective function with LOL term and LGEN
     @variables(ed, begin 
         LOL[T] >= 0
@@ -85,7 +107,7 @@ function ED(uc, VLOL, VLGEN; config...)
     return ed
 end
 
-function update_dispatch_restrictions(ed; kwargs...)
+function update_dispatch_restrictions(ed, reserve_variables, variables_to_fix; kwargs...)
     bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
     constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
     constrain_dispatch = get(kwargs, :constrain_dispatch, true)
@@ -94,10 +116,10 @@ function update_dispatch_restrictions(ed; kwargs...)
     if constrain_SOE_by_envelopes
         variables_to_constrain = [GEN]
     end
-    constrain_decision_variables(ed, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain)
+    constrain_decision_variables(ed, reserve_variables, variables_to_fix, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain)
 end
 
-function constrain_decision_variables(model, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool, variables_to_constrain = [GEN, CH, DIS], variables_to_fix =  [COMMIT, START, SHUT,:RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP])
+function constrain_decision_variables(model, reserve_variables, variables_to_fix, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool, variables_to_constrain = [GEN, CH, DIS])
     # This function will fixes the following decision variables :COMMIT, :START, :SHUT, :RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP
     # If constrain_dispatch = true, it constraints the dispatch variables (up to three: :GEN, :CH and :DIS) according to the reserve procured at UC stage.
     # Variables that do not have a reserve or energy reserve element associated will be fixed to their value at UC stage.
@@ -106,36 +128,20 @@ function constrain_decision_variables(model, constrain_SOE_by_envelopes::Bool, c
     # If constrain_SOE_by_envelopes is true, it will add SOE envelopes for SOE.
     # It will also constrain variables in variables_to_constrain according to the reserve procured at UC stage.
     # If remove_variables_from_objective, it will remove the fixed decision variables from the objective function
-    function get_reserves_variables(model, prepend = false)
-        prepend_E(symbol_name, prepend) = !prepend ? symbol_name : Symbol("E"*string(symbol_name))    
-        return Dict(
-            :res_up_var => model[prepend_E(:RESUP, prepend)],
-            :res_up_var_value => value.(model[prepend_E(:RESUP, prepend)]),
-            :res_dn_var => model[prepend_E(:RESDN, prepend)],
-            :res_dn_var_value => value.(model[prepend_E(:RESDN, prepend)]),
-            :res_up_ch_var =>  model[prepend_E(:RESUPCH, prepend)],
-            :res_up_ch_var_value => value.(model[prepend_E(:RESUPCH, prepend)]),
-            :res_up_dis_var =>  model[prepend_E(:RESUPDIS, prepend)],
-            :res_up_dis_var_value => value.(model[prepend_E(:RESUPDIS, prepend)]),
-            :res_dn_ch_var =>  model[prepend_E(:RESDNCH, prepend)],
-            :res_dn_ch_var_value => value.(model[prepend_E(:RESDNCH, prepend)]), 
-            :res_dn_dis_var =>  model[prepend_E(:RESDNDIS, prepend)],
-            :res_dn_dis_var_value => value.(model[prepend_E(:RESDNDIS, prepend)]), 
-        )
-    end
+    
     #TODO: split this in multiple functions. Too many arguments.
-    variables_to_fix = [(model[var], value.(model[var])) for var in variables_to_fix if haskey(model, var)] # values extraction
+    #  values extraction
     if constrain_SOE_by_envelopes # values extraction
         # envelopes for ED
         E_SOEUP_value, E_SOEDN_value = generate_envelopes(model) # values extraction
     end
     constrain_by_energy = haskey(model, :ERESUP) # determines whether reserves or energy reserves
     variables_to_constrain =  [(model[var], value.(model[var])) for var in variables_to_constrain] # values extraction
-    variables_from_reserve = get_reserves_variables(model, constrain_by_energy) # values extraction
+    # reserve_variables = get_reserves_variables(model, constrain_by_energy) # values extraction
     if constrain_dispatch # assumes either ERESUP or RESUP exists
-        constrain_dispatch_variables_according_to_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; variables_from_reserve...)
+        constrain_dispatch_variables_according_to_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; reserve_variables...)
     end
-    constraint_dispatch_variables_with_no_reserve(bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; variables_from_reserve...) # By default, units not offering reserve will have their dispatch fixed.
+    constraint_dispatch_variables_with_no_reserve(bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; reserve_variables...) # By default, units not offering reserve will have their dispatch fixed.
     if constrain_SOE_by_envelopes
         constrain_SOE_to_envelopes(model, E_SOEUP_value, E_SOEDN_value)
         add_envelopes_ED(model, E_SOEUP_value, E_SOEDN_value) # to recover it as output
@@ -493,45 +499,45 @@ function solve_economic_dispatch_(ed, gen_df, loads, gen_variable; kwargs...)
     return get_model_solution(ed, gen_df, gen_variable; loads = loads, kwargs...)
 end
 
-function solve_economic_dispatch_get_solution(uc, gen_df, loads, gen_variable; kwargs...)
-    # Parsing arguments...
-    # remove_reserve_constraints = get(kwargs, :remove_reserve_constraints, true)
-    max_iterations = get(kwargs, :max_iterations, 100)
-    constrain_dispatch = get(kwargs, :constrain_dispatch, true)
-    variables_to_constrain = get(kwargs, :variables_to_constrain, [GEN])
-    remove_variables_from_objective = get(kwargs, :remove_variables_from_objective, false)
-    VLOL = get(kwargs, :VLOL, 1e4)
-    VLGEN = get(kwargs, :VLGEN, 0)
-    bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
-    constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
-    # parsing end
-    # uc = construct_unit_commitment(gen_df, loads[!,[HOUR, DEMAND]], gen_variable; kwargs...)
-    # optimize!(uc)
-    if constrain_SOE_by_envelopes
-        variables_to_constrain = [GEN]
-    end
-    ed = ED(uc, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain, VLOL, VLGEN)
-    # save_model_to_file(ed,"ed")
-    solutions = Dict()
-    kwargs = Dict(kwargs)
-    # At this point one idea would be to copy several instances of ed so all of them use the same input solution from uc
-    for k in first(propertynames(loads[!, Not([HOUR,:day])]), max_iterations)
-        println("")
-        println("Montecarlo iteration: $k")
-        gen_df_k, loads_df_k, gen_variable_k = pre_process_load_gen_variable(gen_df, rename(loads[!,[HOUR,k]], k=>DEMAND), gen_variable) # remove negative net load to convert it into net generation asset
-        # update_demand(ed, loads_df_k) # update demand values with net load without negative values
-        # update_generation(ed, gen_variable_k) # update generation values with net generation asset
-        update_parameter_value(ed, :p_DEMAND, loads_df_k[:,:demand])
-        update_parameter_value(ed, :p_MAX_GEN, convert_to_matrix(gen_variable_k, :r_id, :hour, :max_production_mw))
-        if (k == get(kwargs, :save_constraints_status_for_demand, false)) 
-            kwargs[:save_constraints_status] = true
-        else
-            kwargs[:save_constraints_status] = false
-        end
-        solutions[k] = solve_economic_dispatch_(ed, gen_df_k, loads_df_k, gen_variable_k; kwargs...)
-    end
-    return merge_solutions(solutions)
-end
+# function solve_economic_dispatch_get_solution(uc, gen_df, loads, gen_variable; kwargs...)
+#     # Parsing arguments...
+#     # remove_reserve_constraints = get(kwargs, :remove_reserve_constraints, true)
+#     max_iterations = get(kwargs, :max_iterations, 100)
+#     constrain_dispatch = get(kwargs, :constrain_dispatch, true)
+#     variables_to_constrain = get(kwargs, :variables_to_constrain, [GEN])
+#     remove_variables_from_objective = get(kwargs, :remove_variables_from_objective, false)
+#     VLOL = get(kwargs, :VLOL, 1e4)
+#     VLGEN = get(kwargs, :VLGEN, 0)
+#     bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
+#     constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
+#     # parsing end
+#     # uc = construct_unit_commitment(gen_df, loads[!,[HOUR, DEMAND]], gen_variable; kwargs...)
+#     # optimize!(uc)
+#     if constrain_SOE_by_envelopes
+#         variables_to_constrain = [GEN]
+#     end
+#     ed = ED(uc, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain, VLOL, VLGEN)
+#     # save_model_to_file(ed,"ed")
+#     solutions = Dict()
+#     kwargs = Dict(kwargs)
+#     # At this point one idea would be to copy several instances of ed so all of them use the same input solution from uc
+#     for k in first(propertynames(loads[!, Not([HOUR,:day])]), max_iterations)
+#         println("")
+#         println("Montecarlo iteration: $k")
+#         gen_df_k, loads_df_k, gen_variable_k = pre_process_load_gen_variable(gen_df, rename(loads[!,[HOUR,k]], k=>DEMAND), gen_variable) # remove negative net load to convert it into net generation asset
+#         # update_demand(ed, loads_df_k) # update demand values with net load without negative values
+#         # update_generation(ed, gen_variable_k) # update generation values with net generation asset
+#         update_parameter_value(ed, :p_DEMAND, loads_df_k[:,:demand])
+#         update_parameter_value(ed, :p_MAX_GEN, convert_to_matrix(gen_variable_k, :r_id, :hour, :max_production_mw))
+#         if (k == get(kwargs, :save_constraints_status_for_demand, false)) 
+#             kwargs[:save_constraints_status] = true
+#         else
+#             kwargs[:save_constraints_status] = false
+#         end
+#         solutions[k] = solve_economic_dispatch_(ed, gen_df_k, loads_df_k, gen_variable_k; kwargs...)
+#     end
+#     return merge_solutions(solutions)
+# end
 
 
 function launch_monte_carlo_get_solution(ed, gen_df, loads, gen_variable; kwargs...)
@@ -550,8 +556,8 @@ function launch_monte_carlo_get_solution(ed, gen_df, loads, gen_variable; kwargs
     return merge_solutions(solutions)
 end
 
-function construct_economic_dispatch(uc; kwargs...)
+function construct_economic_dispatch(uc, reserve_variables, variables_to_fix; kwargs...)
     VLOL = get(kwargs, :VLOL, 1e4)
     VLGEN = get(kwargs, :VLGEN, 0)
-    return ED(uc, VLOL, VLGEN;  kwargs...)
+    return ED(uc, VLOL, VLGEN, reserve_variables, variables_to_fix; kwargs...)
 end
