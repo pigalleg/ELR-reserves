@@ -38,7 +38,7 @@ function get_multipliers(model)
 end
 
 # TODO change gen_variable => gen_varialbe_df, loads => loads_df
-function ED(uc, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool, variables_to_constrain::Vector{Symbol}, VLOL::Union{Float64,Int64,Vector}, VLGEN::Union{Float64,Int64,Vector})
+function ED(uc, VLOL, VLGEN; config...)
     println("Constructing ED...")
     # Outputs EC by fixing variables of UC
     T, __ = create_time_sets()
@@ -53,8 +53,9 @@ function ED(uc, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidi
     ed = uc # pointer, uc object will change
     # set_optimizer_attribute(ed, "TimeLimit", 60.0)    # 60 seconds
     add_envelopes_UC(ed)
-    constrain_decision_variables(ed, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain)
+    update_dispatch_restrictions(ed; config...)
     constraint_SOE_final_to_envelopes_UC(ed) # redundant when constrain_SOE_by_envelopes == true
+    
     # update objective function with LOL term and LGEN
     @variables(ed, begin 
         LOL[T] >= 0
@@ -68,7 +69,6 @@ function ED(uc, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidi
     # @constraint(ed,
     #     sum(LOL[t] for t in T) == 0 
     # )
-    
     # Update supply-demand balance expression
     SupplyDemand = ed[:SupplyDemand]
     remove_variable_constraint(ed, :SupplyDemand, false)
@@ -85,6 +85,17 @@ function ED(uc, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidi
     return ed
 end
 
+function update_dispatch_restrictions(ed; kwargs...)
+    bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
+    constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
+    constrain_dispatch = get(kwargs, :constrain_dispatch, true)
+    variables_to_constrain = get(kwargs, :variables_to_constrain, [GEN])
+    remove_variables_from_objective = get(kwargs, :remove_variables_from_objective, false)
+    if constrain_SOE_by_envelopes
+        variables_to_constrain = [GEN]
+    end
+    constrain_decision_variables(ed, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain)
+end
 
 function constrain_decision_variables(model, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool, variables_to_constrain = [GEN, CH, DIS], variables_to_fix =  [COMMIT, START, SHUT,:RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP])
     # This function will fixes the following decision variables :COMMIT, :START, :SHUT, :RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP
@@ -522,22 +533,6 @@ function solve_economic_dispatch_get_solution(uc, gen_df, loads, gen_variable; k
     return merge_solutions(solutions)
 end
 
-function construct_economic_dispatch(uc; kwargs...)
-    # Parsing arguments...
-    # remove_reserve_constraints = get(kwargs, :remove_reserve_constraints, true)
-    constrain_dispatch = get(kwargs, :constrain_dispatch, true)
-    variables_to_constrain = get(kwargs, :variables_to_constrain, [GEN])
-    remove_variables_from_objective = get(kwargs, :remove_variables_from_objective, false)
-    VLOL = get(kwargs, :VLOL, 1e4)
-    VLGEN = get(kwargs, :VLGEN, 0)
-    bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
-    constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
-    # parsing end
-    if constrain_SOE_by_envelopes
-        variables_to_constrain = [GEN]
-    end
-    return ED(uc, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain, VLOL, VLGEN)
-end
 
 function launch_monte_carlo_get_solution(ed, gen_df, loads, gen_variable; kwargs...)
     max_iterations = get(kwargs, :max_iterations, 100)
@@ -553,4 +548,10 @@ function launch_monte_carlo_get_solution(ed, gen_df, loads, gen_variable; kwargs
         solutions[k] = solve_economic_dispatch_(ed, gen_df_k, loads_df_k, gen_variable_k; kwargs...)
     end
     return merge_solutions(solutions)
+end
+
+function construct_economic_dispatch(uc; kwargs...)
+    VLOL = get(kwargs, :VLOL, 1e4)
+    VLGEN = get(kwargs, :VLGEN, 0)
+    return ED(uc, VLOL, VLGEN;  kwargs...)
 end

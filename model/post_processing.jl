@@ -142,7 +142,6 @@ function get_model_solution(model, gen_df, gen_variable; loads = nothing, scenar
             (μ_up = Array(parameter_value.(model[:μ_up])),
             μ_dn = Array(parameter_value.(model[:μ_dn])))
         )
-        
     end
     if haskey(model, :VSRESUP) && haskey(model, :VSRESDN) # UC
         parameters_for_enriching = merge(parameters_for_enriching,
