@@ -294,14 +294,13 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         
         s_uc[(day,μ_config.key)] = get_model_solution(uc, gen_df, gen_variable_df; loads = loads_df, config...)
 
-        # ed = construct_economic_dispatch(
-            # gen_df_;
+        ed = construct_economic_dispatch(uc; kwargs...)
 
         # constrain_decision_variables(ed) # according to the uc's output
         # solve_monte_carlo(ed, gen_df, random_loads_df, gen_variable_df; config)
 
-        s_ed[(day,μ_config.key)] = solve_economic_dispatch_get_solution(
-            uc,
+        s_ed[(day,μ_config.key)] = launch_monte_carlo_get_solution(
+            ed,
             gen_df,
             random_loads_df,
             gen_variable_df;
