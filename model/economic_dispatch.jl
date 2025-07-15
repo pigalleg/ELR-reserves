@@ -36,6 +36,11 @@ function get_reserves_variables(model)
     )
 end
 
+function get_envelope_variables(model)
+    variables = [:SOEUP, :SOEDN, :ESOEUP, :ESOEDN]
+    return [(model[var], value.(model[var])) for var in variables if haskey(model, var)]
+end
+
 function get_variables_to_fix(model)
     variables_to_fix =  [COMMIT, START, SHUT,:RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP]
     return [(model[var], value.(model[var])) for var in variables_to_fix if haskey(model, var)]
@@ -94,9 +99,11 @@ function ED(uc, VLOL, VLGEN)
     # optimize!(ed)
     ed = uc # pointer, uc object will change
     # set_optimizer_attribute(ed, "TimeLimit", 60.0)    # 60 seconds
-    add_envelopes_UC(ed)
+    
+    # add_envelopes_UC(ed)
+    
     # update_dispatch_restrictions(ed, reserve_variables, variables_to_fix; config...)
-    constraint_SOE_final_to_envelopes_UC(ed) # redundant when constrain_SOE_by_envelopes == true
+    # constraint_SOE_final_to_envelopes_UC(ed) # redundant when constrain_SOE_by_envelopes == true
     # update objective function with LOL term and LGEN
     @variables(ed, begin 
         LOL[T] >= 0
@@ -382,26 +389,31 @@ function constrain_SOE_to_envelopes(model, E_SOEUP_value, E_SOEDN_value)
     end   
 end
 
-function constraint_SOE_final_to_envelopes_UC(model)
-    # it assumes envelopes have been calculated by this stage
+function constraint_SOE_final_to_envelopes_UC(model, envelope_variables)
+    # It assumes envelopes have been calculated by this stage
+    # Must be called after SOE final restrictions are imposed
     println("Constraining SOE final to envelopes...")
     SOE = model[:SOE]
     S = axes(SOE)[1]
     T =  axes(model[:SupplyDemandBalance])[1]
     remove_variable_constraint(model, :SOEFinal)
-    if haskey(model, :SOEUP)
+
+    E_SOEUP_UC_value = envelope_variables[1][2]
+    E_SOEDN_UC_value = envelope_variables[2][2]
+
+    if get_variable_base_name(first(first(envelope_variables))) == :SOEUP
         @constraint(model, SOEFinalDn[s in S],
-            SOE[s,T[end]] >= model[:SOEDN_UC][s,T[end]]
+            SOE[s,T[end]] >= E_SOEUP_UC_value[s,T[end]]
         )
         @constraint(model, SOEFinalUp[s in S],
-            SOE[s,T[end]] <= model[:SOEUP_UC][s,T[end]]
+            SOE[s,T[end]] <= E_SOEDN_UC_value[s,T[end]]
         )
     else
         @constraint(model, SOEFinalDn[s in S],
-            SOE[s,T[end]] >= minimum(model[:ESOEDN_UC][s,:,T[end]])
+            SOE[s,T[end]] >= minimum(E_SOEUP_UC_value[s,:,T[end]])
         )
         @constraint(model, SOEFinalUp[s in S],
-            SOE[s,T[end]] <= maximum(model[:ESOEUP_UC][s,:,T[end]])
+            SOE[s,T[end]] <= maximum(E_SOEDN_UC_value[s,:,T[end]])
         )
     end
 end
