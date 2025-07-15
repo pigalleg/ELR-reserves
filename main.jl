@@ -302,8 +302,10 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         
         reserve_variables = get_reserves_variables(uc) # values extraction
         variables_to_fix = get_variables_to_fix(uc) # values extraction
+        variables_to_constrain = get_variables_to_constrain(uc; config...) # values extraction
         
-        ed = construct_economic_dispatch(uc, reserve_variables, variables_to_fix; config...)
+        ed = construct_economic_dispatch(uc)
+        update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; config...)
         # update_dispatch_restrictions(ed; config...)
         # constrain_decision_variables(ed) # according to the uc's output
         s_ed[(day,μ_config.key)] = launch_monte_carlo_get_solution(
