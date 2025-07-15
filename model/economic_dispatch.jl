@@ -118,7 +118,7 @@ function ED(uc, VLOL, VLGEN)
     )
     p_DEMAND = ed[:p_DEMAND]
     remove_variable_constraint(ed, :SupplyDemandBalance, false)
-    @constraint(ed, SupplyDemandBalance[t in T], # Update of SupplyDemand constraint is performed within the solve_economic_dispatch's loop
+    @constraint(ed, SupplyDemandBalance[t in T], # Update of p_DEMAND constraint is performed within the Monte Carlo loop
         SupplyDemand[t] == p_DEMAND[t]
     )
     remove_energy_and_reserve_constraints(ed)
@@ -131,10 +131,11 @@ function update_dispatch_restrictions(ed, reserve_variables, variables_to_constr
     constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
     constrain_dispatch = get(kwargs, :constrain_dispatch, true)
     remove_variables_from_objective = get(kwargs, :remove_variables_from_objective, false)
-    constrain_decision_variables(ed, reserve_variables, variables_to_constrain, variables_to_fix, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective)
+    constrain_decision_variables(ed, reserve_variables, variables_to_constrain, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve)
+    fix_decision_variables(ed, variables_to_fix, remove_variables_from_objective)
 end
 
-function constrain_decision_variables(model, reserve_variables, variables_to_constrain, variables_to_fix, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool)
+function constrain_decision_variables(model, reserve_variables, variables_to_constrain, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool)
     # This function will fixes the following decision variables :COMMIT, :START, :SHUT, :RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP
     # If constrain_dispatch = true, it constraints the dispatch variables (up to three: :GEN, :CH and :DIS) according to the reserve procured at UC stage.
     # Variables that do not have a reserve or energy reserve element associated will be fixed to their value at UC stage.
@@ -143,8 +144,6 @@ function constrain_decision_variables(model, reserve_variables, variables_to_con
     # If constrain_SOE_by_envelopes is true, it will add SOE envelopes for SOE.
     # It will also constrain variables in variables_to_constrain according to the reserve procured at UC stage.
     # If remove_variables_from_objective, it will remove the fixed decision variables from the objective function
-    
-    #TODO: split this in multiple functions. Too many arguments.
     #  values extraction
     if constrain_SOE_by_envelopes # values extraction
         # envelopes for ED
@@ -160,7 +159,6 @@ function constrain_decision_variables(model, reserve_variables, variables_to_con
         constrain_SOE_to_envelopes(model, E_SOEUP_value, E_SOEDN_value)
         add_envelopes_ED(model, E_SOEUP_value, E_SOEDN_value) # to recover it as output
     end
-    fix_decision_variables(model, variables_to_fix, remove_variables_from_objective)
 end
 
 function constraint_dispatch_variables_with_no_reserve(bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; kwargs...)
