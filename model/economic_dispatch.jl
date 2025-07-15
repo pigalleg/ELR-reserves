@@ -35,10 +35,22 @@ function get_reserves_variables(model)
         :res_dn_dis_var_value => value.(model[prepend_E(:RESDNDIS, prepend)]), 
     )
 end
+
 function get_variables_to_fix(model)
     variables_to_fix =  [COMMIT, START, SHUT,:RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP]
     return [(model[var], value.(model[var])) for var in variables_to_fix if haskey(model, var)]
 end
+
+function get_variables_to_constrain(model; kwargs...)
+    variables_to_constrain = get(kwargs, :variables_to_constrain, [GEN])
+    constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
+    if constrain_SOE_by_envelopes
+        variables_to_constrain = [GEN]
+        println("variables_to_constrain set to [:GEN] because constrain_SOE_by_envelopes is true")
+    end
+    return [(model[var], value.(model[var])) for var in variables_to_constrain] 
+end
+
 
 function get_multipliers(model)
     CH = model[:CH]
@@ -60,8 +72,15 @@ function get_multipliers(model)
     return μ_up, μ_dn
 end
 
-# TODO change gen_variable => gen_varialbe_df, loads => loads_df
-function ED(uc, VLOL, VLGEN, reserve_variables, variables_to_fix; config...)
+
+function construct_economic_dispatch(uc; kwargs... )
+    VLOL = get(kwargs, :VLOL, 1e4)
+    VLGEN = get(kwargs, :VLGEN, 0)
+    return ED(uc, VLOL, VLGEN)
+end
+
+
+function ED(uc, VLOL, VLGEN)
     println("Constructing ED...")
     # Outputs EC by fixing variables of UC
     T, __ = create_time_sets()
@@ -76,7 +95,7 @@ function ED(uc, VLOL, VLGEN, reserve_variables, variables_to_fix; config...)
     ed = uc # pointer, uc object will change
     # set_optimizer_attribute(ed, "TimeLimit", 60.0)    # 60 seconds
     add_envelopes_UC(ed)
-    update_dispatch_restrictions(ed, reserve_variables, variables_to_fix; config...)
+    # update_dispatch_restrictions(ed, reserve_variables, variables_to_fix; config...)
     constraint_SOE_final_to_envelopes_UC(ed) # redundant when constrain_SOE_by_envelopes == true
     # update objective function with LOL term and LGEN
     @variables(ed, begin 
@@ -107,19 +126,15 @@ function ED(uc, VLOL, VLGEN, reserve_variables, variables_to_fix; config...)
     return ed
 end
 
-function update_dispatch_restrictions(ed, reserve_variables, variables_to_fix; kwargs...)
+function update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; kwargs...)
     bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
     constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
     constrain_dispatch = get(kwargs, :constrain_dispatch, true)
-    variables_to_constrain = get(kwargs, :variables_to_constrain, [GEN])
     remove_variables_from_objective = get(kwargs, :remove_variables_from_objective, false)
-    if constrain_SOE_by_envelopes
-        variables_to_constrain = [GEN]
-    end
-    constrain_decision_variables(ed, reserve_variables, variables_to_fix, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective, variables_to_constrain)
+    constrain_decision_variables(ed, reserve_variables, variables_to_constrain, variables_to_fix, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve, remove_variables_from_objective)
 end
 
-function constrain_decision_variables(model, reserve_variables, variables_to_fix, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool, variables_to_constrain = [GEN, CH, DIS])
+function constrain_decision_variables(model, reserve_variables, variables_to_constrain, variables_to_fix, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool, remove_variables_from_objective::Bool)
     # This function will fixes the following decision variables :COMMIT, :START, :SHUT, :RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP
     # If constrain_dispatch = true, it constraints the dispatch variables (up to three: :GEN, :CH and :DIS) according to the reserve procured at UC stage.
     # Variables that do not have a reserve or energy reserve element associated will be fixed to their value at UC stage.
@@ -136,7 +151,6 @@ function constrain_decision_variables(model, reserve_variables, variables_to_fix
         E_SOEUP_value, E_SOEDN_value = generate_envelopes(model) # values extraction
     end
     constrain_by_energy = haskey(model, :ERESUP) # determines whether reserves or energy reserves
-    variables_to_constrain =  [(model[var], value.(model[var])) for var in variables_to_constrain] # values extraction
     # reserve_variables = get_reserves_variables(model, constrain_by_energy) # values extraction
     if constrain_dispatch # assumes either ERESUP or RESUP exists
         constrain_dispatch_variables_according_to_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; reserve_variables...)
@@ -556,8 +570,3 @@ function launch_monte_carlo_get_solution(ed, gen_df, loads, gen_variable; kwargs
     return merge_solutions(solutions)
 end
 
-function construct_economic_dispatch(uc, reserve_variables, variables_to_fix; kwargs...)
-    VLOL = get(kwargs, :VLOL, 1e4)
-    VLGEN = get(kwargs, :VLGEN, 0)
-    return ED(uc, VLOL, VLGEN, reserve_variables, variables_to_fix; kwargs...)
-end
