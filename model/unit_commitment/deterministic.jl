@@ -3,6 +3,7 @@ using Gurobi
 # include("../utils.jl")
 # include("../post_processing.jl")
 include("./utils.jl")
+include("../common_constraints.jl")
 
 function initialize_model(model, mip_gap)
     set_optimizer(model, Gurobi.Optimizer)
@@ -30,14 +31,14 @@ function DUC(gen_df)
     
     @variable(model, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
     @variable(model, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
+    
     @variables(model, begin
         GEN[G, T]  >= 0     # generation
         COMMIT[G_thermal, T], Bin # commitment status (Bin=binary)
         START[G_thermal, T], Bin  # startup decision
         SHUT[G_thermal, T], Bin   # shutdown decision
     end)
-    
-              
+         
   # Objective function
       # Sum of variable costs + start-up costs for all generators and time periods
       # TODO: add delta_T
@@ -69,30 +70,13 @@ function DUC(gen_df)
         SupplyDemand[t] == p_DEMAND[t]
     )
 
-    # Capacity constraints 
-    # 1. thermal generators requiring commitment
-    @constraint(model, Cap_thermal_min[g in G_thermal, t in T], 
-        GEN[g,t] >= COMMIT[g, t]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:min_power][1] 
-    ) 
-    @constraint(model, Cap_thermal_max[g in G_thermal, t in T], 
-        GEN[g,t] <= COMMIT[g, t]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1]
-    ) 
+    add_capacity_constraints(model, gen_df, sets)
 
-    # 2. non-variable generation not requiring commitment
-    @constraint(model, Cap_nt_nonvar[g in G_nt_nonvar, t in T], 
-        GEN[g,t] <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]
-    )
-
-    # 3. variable generation, accounting for hourly capacity factor
-    @constraint(model, Cap_var[g in G_var, t in T],
-        GEN[g,t] <= p_MAX_GEN[g,t] #gen_variable[(gen_variable.r_id .== g) .& (gen_variable.hour .== t),:max_production_mw][1]
-    )
     # Unit commitment constraints
     # 1. Minimum up time
     @constraint(model, Startup[g in G_thermal, t in T],
         COMMIT[g, t] >= sum(START[g, tt] for tt in intersect(T, (t-gen_df[gen_df.r_id .== g,:up_time][1]):t))
     )
-
     # 2. Minimum down time
     @constraint(model, Shutdown[g in G_thermal, t in T],
         1-COMMIT[g, t] >= sum(SHUT[g, tt] for tt in intersect(T, (t-gen_df[gen_df.r_id .== g,:down_time][1]):t))
@@ -102,166 +86,8 @@ function DUC(gen_df)
     @constraint(model, CommitmentStatus[g in G_thermal, t in T_red],
         COMMIT[g,t+1] - COMMIT[g,t] == START[g,t+1] - SHUT[g,t+1]
     )
+
     return model
-end
-
-function add_storage(model, storage, gen_df, sets)
-    T = sets.T 
-    T_incr = copy(T)
-    pushfirst!(T_incr, T_incr[1]-1) # T_incr = [t[1]-1,T]
-    S = create_storage_sets(storage)
-    
-    GEN = model[:GEN]
-    p_DEMAND = model[:p_DEMAND]
-    # START = model[:START]
-    @variables(model, begin
-        CH[S,T] >= 0
-        DIS[S,T] >= 0
-        SOE[S,T_incr] >= 0 # T_incr captures SOE at t = T[1]-1
-        M[S,T], Bin # (charging mode) M[s,t] = 1  => DIS[s,t] = 0, (discharging mode) M[s,t] = 0 => CH[s,t] = 0
-    end)
-
-    # Redefinition of objecive function
-    @expression(model, StorageOperationalCost,
-        sum(storage[storage.r_id .== s,:var_om_cost_per_mwh][1]*(CH[s,t] + DIS[s,t]) for s in S, t in T)
-    )
-
-    OPEX = model[:OPEX]
-    remove_variable_constraint(model, :OPEX, false)
-    @expression(model, OPEX,
-        OPEX + model[:StorageOperationalCost]
-    )
-    @objective(model, Min,
-        model[:OPEX]
-    )
-
-    # Redefinition of supply-demand balance expression and constraint
-    SupplyDemand = model[:SupplyDemand]
-    unregister(model, :SupplyDemand)
-    @expression(model, SupplyDemand[t in T],
-        SupplyDemand[t] - sum(CH[s,t] - DIS[s,t] for s in S)
-    )
-    SupplyDemandBalance = model[:SupplyDemandBalance]
-    delete.(model, SupplyDemandBalance) # Constraints must be deleted also
-    unregister(model, :SupplyDemandBalance)
-    @constraint(model, SupplyDemandBalance[t in T], 
-        SupplyDemand[t] == p_DEMAND[t]
-    )
-
-    # Charging-discharging logic
-    @constraint(model, ChargeLogic[s in S, t in T],
-        CH[s,t] <= storage[storage.r_id .== s,:existing_cap_mw][1]*M[s,t]
-    )
-    @constraint(model, DischargeLogic[s in S, t in T],
-        DIS[s,t] <= storage[storage.r_id .== s,:existing_cap_mw][1]*(1-M[s,t])
-    )
-    
-    # Storage constraints
-    @constraint(model, SOEEvol[s in S, t in T], 
-        SOE[s,t] == SOE[s,t-1] + CH[s,t]*storage[storage.r_id .== s,:charge_efficiency][1] - DIS[s,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
-    ) #TODO: add delta_T
-
-    @constraint(model, SOEMax[s in S, t in T],
-        SOE[s,t] <= storage[storage.r_id .== s,:max_energy_mwh][1]
-    )
-    @constraint(model, SOEMin[s in S, t in T],
-        SOE[s,t] >= storage[storage.r_id .== s,:min_energy_mwh][1]
-    )
-    @constraint(model, CHMin[s in S, t in T],
-        CH[s,t] >= storage[storage.r_id .== s,:existing_cap_mw][1]*storage[storage.r_id .== s,:min_power][1] #TODO: calculation should be done at input file
-    )
-    @constraint(model, DISMin[s in S, t in T],
-        DIS[s,t] >= storage[storage.r_id .== s,:existing_cap_mw][1]*storage[storage.r_id .== s,:min_power][1] #TODO: calculation should be done at input file
-    )
-    # SOE_T_initial = SOE_0
-    @constraint(model, SOEO[s in S], #TODO: replace by T
-        SOE[s,T_incr[1]] == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
-    )
-    @constraint(model, SOEFinal[s in S],
-        SOE[s,T[end]] == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
-    )
-end
-
-function add_ramp_constraints(model, gen_df, sets)
-    G = sets.G
-    G_thermal = sets.G_thermal
-    G_nonthermal = sets.G_nonthermal
-    T = sets.T
-    T_red = sets.T_red
-
-    GEN = model[:GEN]
-    COMMIT = model[:COMMIT]
-
-    # New auxiliary variable GENAUX for generation above the minimum output level
-    @variable(model, GENAUX[G_thermal, T] >= 0)
-    
-    # for committed thermal units (only created for thermal generators)
-    @constraint(model, AuxGen[g in G_thermal, t in T],
-        GENAUX[g,t] == GEN[g,t] - COMMIT[g,t]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:min_power][1]
-    )
-    
-    # Ramp equations for thermal generators (constraining GENAUX)
-    @constraint(model, RampUp_thermal[g in G_thermal, t in T_red], 
-        GENAUX[g,t+1] - GENAUX[g,t] <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
-    )
-
-    @constraint(model, RampDn_thermal[g in G_thermal, t in T_red], 
-        GENAUX[g,t] - GENAUX[g,t+1] <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
-    )
-
-    # Ramp equations for non-thermal generators (constraining total generation GEN)
-    @constraint(model, RampUp_nonthermal[g in G_nonthermal, t in T_red], 
-        GEN[g,t+1] - GEN[g,t] <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
-    )
-
-    # @constraint(model, RampDn[i in G, t in T_red], 
-    #     GEN[i,t] - GEN[i,t+1] <= gen_df[gen_df.r_id .== i,:existing_cap_mw][1] * 
-    #                              gen_df[gen_df.r_id .== i,:ramp_dn_percentage][1])
-
-    @constraint(model, RampDn_nonthermal[g in G_nonthermal, t in T_red], 
-        GEN[g,t] - GEN[g,t+1] <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
-    )
-end
-
-function add_thermal_reserve_power_constraints(model, gen_df, sets)
-    G_thermal = sets.G_thermal
-    T = sets.T
-    T_red = sets.T_red
-    GEN = model[:GEN]
-    COMMIT = model[:COMMIT]
-    if haskey(model, :RESUP) && haskey(model, :RESDN)
-        RESUP = model[:RESUP]
-        RESDN = model[:RESDN]
-    else
-        @variables(model, begin
-            RESUP[G_thermal, T] >= 0 # reserve up offered by thermal generators
-            RESDN[G_thermal, T] >= 0 # reserve down offered by thermal generators
-        end)
-    end
-    
-    # (1) Reserves limited by committed capacity of generator
-    @constraint(model, ResUpThermal[g in G_thermal, t in T],
-        RESUP[g,t] <= COMMIT[g,t]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1] - GEN[g,t]
-    )
-    @constraint(model, ResDnThermal[g in G_thermal, t in T],
-        RESDN[g,t] <= GEN[g,t] - COMMIT[g,t]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:min_power][1]
-    ) #TODO: calculation should be done at input file
-    if haskey(model, :RampUp_thermal) # adding only if ramp constraints are present
-        # (2) Reserves limited by ramp rates #TODO: check if this restrictions make sense
-        @constraint(model, ResUpRamp[g in G_thermal, t in T],
-            RESUP[g,t] <=  gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
-        )
-        @constraint(model, ResDnRamp[g in G_thermal, t in T],
-            RESDN[g,t] <=  gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
-        )
-        # (3) Robust ramp constraints
-        @constraint(model, ResUpRampRobust[g in G_thermal, t in T_red],
-            GEN[g,t+1] + RESUP[g,t+1] - (GEN[g,t] - RESDN[g,t]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
-        )
-        @constraint(model, ResDnRampRobust[g in G_thermal, t in T_red],
-            GEN[g,t] + RESUP[g,t] - (GEN[g,t+1] - RESDN[g,t+1]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
-        )
-    end
 end
 
 
@@ -418,6 +244,48 @@ function add_reserve_constraints(model, gen_df, storage::Union{DataFrame, Nothin
     @constraint(model, ResDnRequirement[t in T],
         sum(RESDN[g,t] for g in G_reserve) + SRESDN[t] >= RRESDN[t]
     )
+end
+
+
+function add_thermal_reserve_power_constraints(model, gen_df, sets)
+    G_thermal = sets.G_thermal
+    T = sets.T
+    T_red = sets.T_red
+    GEN = model[:GEN]
+    COMMIT = model[:COMMIT]
+    if haskey(model, :RESUP) && haskey(model, :RESDN)
+        RESUP = model[:RESUP]
+        RESDN = model[:RESDN]
+    else
+        @variables(model, begin
+            RESUP[G_thermal, T] >= 0 # reserve up offered by thermal generators
+            RESDN[G_thermal, T] >= 0 # reserve down offered by thermal generators
+        end)
+    end
+    
+    # (1) Reserves limited by committed capacity of generator
+    @constraint(model, ResUpThermal[g in G_thermal, t in T],
+        RESUP[g,t] <= COMMIT[g,t]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1] - GEN[g,t]
+    )
+    @constraint(model, ResDnThermal[g in G_thermal, t in T],
+        RESDN[g,t] <= GEN[g,t] - COMMIT[g,t]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:min_power][1]
+    ) #TODO: calculation should be done at input file
+    if haskey(model, :RampUp_thermal) # adding only if ramp constraints are present
+        # (2) Reserves limited by ramp rates #TODO: check if this restrictions make sense
+        @constraint(model, ResUpRamp[g in G_thermal, t in T],
+            RESUP[g,t] <=  gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
+        )
+        @constraint(model, ResDnRamp[g in G_thermal, t in T],
+            RESDN[g,t] <=  gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
+        )
+        # (3) Robust ramp constraints
+        @constraint(model, ResUpRampRobust[g in G_thermal, t in T_red],
+            GEN[g,t+1] + RESUP[g,t+1] - (GEN[g,t] - RESDN[g,t]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
+        )
+        @constraint(model, ResDnRampRobust[g in G_thermal, t in T_red],
+            GEN[g,t] + RESUP[g,t] - (GEN[g,t+1] - RESDN[g,t+1]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
+        )
+    end
 end
 
 function add_storage_reserve_repartition(model, reserve, storage_reserve_repartition, sets)
