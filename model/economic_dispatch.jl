@@ -160,6 +160,7 @@ function ED(uc, gen_df, storage, VLOL, VLGEN)
 
     CH = ed[:CH]
     DIS = ed[:DIS]
+    S = create_storage_sets(storage)
     @expression(ed, SupplyDemand[t in T],
         sum(GEN[g,t] for g in G) + LOL[t] - LGEN[t]  - sum(CH[s,t] - DIS[s,t] for s in S)
     )
