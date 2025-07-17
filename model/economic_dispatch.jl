@@ -94,9 +94,19 @@ function ED(uc, gen_df, storage, VLOL, VLGEN)
     # constraint_SOE_final_to_envelopes(ed) # redundant when constrain_SOE_by_envelopes == true
     # update objective function with LOL term and LGEN
 
+    remove_variable_constraint(ed, :p_DEMAND, false)
+    remove_variable_constraint(ed, :p_MAX_GEN, false)
+    remove_variable_constraint(ed, :SupplyDemand, false)
+    remove_variable_constraint(ed, :SupplyDemandBalance, false)
+    remove_variable_constraint(ed, :Cap_thermal_min, false)
+    remove_variable_constraint(ed, :Cap_thermal_max, false)
+    remove_variable_constraint(ed, :Cap_nt_nonvar, false)
+    remove_variable_constraint(ed, :Cap_var, false)
 
-    # @variable(ed, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
-    # @variable(ed, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
+
+    @variable(ed, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
+    @variable(ed, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
+
     @variable(ed, VLOL[t in keys(VLOL)] in Parameter(VLOL[t])) # for post-processing purposes
     @variable(ed, VLGEN[t in keys(VLGEN)] in Parameter(VLGEN[t])) # for post-processing purposes
     
@@ -145,21 +155,18 @@ function ED(uc, gen_df, storage, VLOL, VLGEN)
         @objective(ed, Min, 
             objective_function(ed) + ed[:EnergyReservePenalizationCost] + ed[:EnergyReserveSlackPenalizationCost]
         )
-    end 
-    # @constraint(ed,
-    #     sum(LOL[t] for t in T) == 0 
-    # )
-    # Update supply-demand balance expression
-    SupplyDemand = ed[:SupplyDemand]
-    remove_variable_constraint(ed, :SupplyDemand, false)
+    end     
+    
     @expression(ed, SupplyDemand[t in T],
-        SupplyDemand[t] + LOL[t] - LGEN[t]
+        sum(GEN[g,t] for g in G) + LOL[t] - LGEN[t]
     )
-    p_DEMAND = ed[:p_DEMAND]
-    remove_variable_constraint(ed, :SupplyDemandBalance, false)
+    
     @constraint(ed, SupplyDemandBalance[t in T], # Update of p_DEMAND constraint is performed within the Monte Carlo loop
         SupplyDemand[t] == p_DEMAND[t]
     )
+
+    add_capacity_constraints(ed, gen_df, sets)
+
     remove_energy_and_reserve_constraints(ed)
     println("...done")
     return ed
