@@ -93,6 +93,19 @@ function get_nonfeasbile_model_information(model)
     )
 end
 
+
+function merge_solutions(solutions::Dict, merge_keys = [ITERATION])
+    # TODO can be done more elegantly
+    # called only by ED
+    solution_keys = union([keys(v) for (k,v) in solutions]...)
+    aux = Dict(k => [] for k in solution_keys)
+    for d in keys(solutions), k in intersect(keys(solutions[d]), solution_keys)
+        aux_ = DataFrame(collect(repeat([isa(d,Tuple) ? d : tuple(d)], size(solutions[d][k],1))), merge_keys)
+        push!(aux[k], hcat(solutions[d][k], aux_))
+    end
+    return NamedTuple(k => vcat(aux[k]..., cols = :union) for k in keys(aux))
+end
+
 function get_solution(model, stochastic = false, get_dual_variables = false)
     if get_dual_variables # when get_dual_variables = true, output contains the fixed model's solution
         model_ = get_fixed_model(model)
