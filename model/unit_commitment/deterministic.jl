@@ -171,7 +171,7 @@ function add_reserve_constraints(model, gen_df, storage::Union{DataFrame, Nothin
         sum(SRESUP[t]*VSRESUP[t] for t in T) + sum(SRESDN[t]*VSRESDN[t] for t in T)
     )
     @objective(model, Min, 
-        objective_function(model) + model[:add_resevePenalizationCost] + model[:add_reseveSlackPenalizationCost]
+        objective_function(model) + model[:ReservePenalizationCost] + model[:ReserveSlackPenalizationCost]
     )
     
     add_thermal_reserve_power_constraints(model, gen_df, sets)
