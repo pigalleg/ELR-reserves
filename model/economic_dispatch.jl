@@ -58,17 +58,25 @@ end
 
 
 
-function construct_economic_dispatch(uc; kwargs... )
+function construct_economic_dispatch(uc, gen_df; kwargs... )
     VLOL = get(kwargs, :VLOL, 1e4)
     VLGEN = get(kwargs, :VLGEN, 0)
-    return ED(uc, VLOL, VLGEN)
+    return ED(uc, gen_df, kwargs[:storage], VLOL, VLGEN)
 end
 
 
-function ED(uc, VLOL, VLGEN)
+function ED(uc, gen_df, storage, VLOL, VLGEN)
     println("Constructing ED...")
     # Outputs EC by fixing variables of UC
-    T, __ = create_time_sets()
+    sets = get_sets(gen_df)
+    G = sets.G
+    G_thermal = sets.G_thermal
+    G_var = sets.G_var
+    G_nonvar = sets.G_nonvar
+    G_nt_nonvar = sets.G_nt_nonvar
+    T = sets.T
+    T_red = sets.T_red
+
     VLOL = convert_to_indexed_vector(VLOL, T)
     VLGEN = convert_to_indexed_vector(VLGEN, T)
     # ed, reference_map = copy_model(uc)
@@ -85,15 +93,59 @@ function ED(uc, VLOL, VLGEN)
     # update_dispatch_restrictions(ed, reserve_variables, variables_to_fix; config...)
     # constraint_SOE_final_to_envelopes(ed) # redundant when constrain_SOE_by_envelopes == true
     # update objective function with LOL term and LGEN
+
+
+    # @variable(ed, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
+    # @variable(ed, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
+    @variable(ed, VLOL[t in keys(VLOL)] in Parameter(VLOL[t])) # for post-processing purposes
+    @variable(ed, VLGEN[t in keys(VLGEN)] in Parameter(VLGEN[t])) # for post-processing purposes
+    
+    #  @variables(ed, begin
+    #     GEN[G, T]  >= 0 # generation
+    #     COMMIT[G_thermal, T], Bin # commitment status (Bin=binary)
+    #     START[G_thermal, T], Bin  # startup decision
+    # end)
+
     @variables(ed, begin 
         LOL[T] >= 0
         LGEN[T] >= 0
         end)
-    @objective(ed, Min, 
-        objective_function(ed) + sum(LOL[t]*VLOL[t] + LGEN[t]*VLGEN[t] for t in T)
+
+    START = ed[:START]
+    COMMIT = ed[:COMMIT]
+    GEN = ed[:GEN]
+    remove_variable_constraint(ed, :StartCost, false)
+    
+    @expression(ed, StartCost,
+        sum(gen_df[gen_df.r_id .== g,:start_cost_per_mw][1]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*START[g,t] for g in G_thermal for t in T)
     )
-    @variable(ed, VLOL[t in keys(VLOL)] in Parameter(VLOL[t])) # for post-processing purposes
-    @variable(ed, VLGEN[t in keys(VLGEN)] in Parameter(VLGEN[t])) # for post-processing purposes
+
+    remove_variable_constraint(ed, :OperationalCost, false)
+    @expression(ed, OperationalCost,
+        sum((gen_df[gen_df.r_id .== g,:heat_rate_mmbtu_per_mwh][1]*gen_df[gen_df.r_id .== g,:fuel_cost][1] + gen_df[gen_df.r_id .== g,:var_om_cost_per_mwh][1])*GEN[g,t] for g in G_nonvar for t in T) +
+        sum(gen_df[gen_df.r_id .== g,:var_om_cost_per_mwh][1]*GEN[g,t]  for g in G_var for t in T) + 
+        sum(gen_df[gen_df.r_id .== g,:fixed_om_cost_per_mw_per_hour][1]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*COMMIT[g,t] for g in G_thermal for t in T) + 
+        sum(gen_df[gen_df.r_id .== g,:fixed_om_cost_per_mw_per_hour][1]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1] for g in G_nt_nonvar for t in T)
+    )
+
+    @objective(ed, Min, 
+        ed[:OPEX] + sum(LOL[t]*VLOL[t] + LGEN[t]*VLGEN[t] for t in T)
+    )
+    if haskey(ed, :StorageOperationalCost)
+        @objective(ed, Min, 
+            objective_function(ed) + ed[:StorageOperationalCost]
+        )
+    end
+    if haskey(ed, :ReservePenalizationCost)
+        @objective(ed, Min, 
+            objective_function(ed) + ed[:ReservePenalizationCost] + ed[:ReserveSlackPenalizationCost]
+        )
+    end
+    if haskey(ed, :EnergyReservePenalizationCost)
+        @objective(ed, Min, 
+            objective_function(ed) + ed[:EnergyReservePenalizationCost] + ed[:EnergyReserveSlackPenalizationCost]
+        )
+    end 
     # @constraint(ed,
     #     sum(LOL[t] for t in T) == 0 
     # )
@@ -356,7 +408,9 @@ function remove_energy_and_reserve_constraints(model)
         :OVMax, :OVMin, :ResUpThermalMin, :ResDownThermalMin, :CommitmentMin, :ResUpStorageMax, :ResUpStorageMin,
         :Startup, :Shutdown, :CommitmentStatus,
         #:RESUP, :RESDN, -> do not remove because belong to the OF.
-        :RESUPCH, :RESDNCH, :RESUPDIS, :RESDNDIS,
+        # :RESUP, :RESDN, :ERESUP, :ERESDN, 
+        # :RESUPCH, :RESDNCH, :RESUPDIS, :RESDNDIS,
+        :ERESUPCH, :ERESDNCH, :ERESUPDIS, :ERESDNDIS,
         # :COMMIT, :START, :SHUT, -> do not remove because belong to the OF.
         ]
     for k in keys
