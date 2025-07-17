@@ -102,7 +102,9 @@ function ED(uc, gen_df, storage, VLOL, VLGEN)
     remove_variable_constraint(ed, :Cap_thermal_max, false)
     remove_variable_constraint(ed, :Cap_nt_nonvar, false)
     remove_variable_constraint(ed, :Cap_var, false)
-
+    remove_variable_constraint(ed, :OPEX, false)
+    remove_variable_constraint(ed, :StartCost, false)
+    remove_variable_constraint(ed, :OperationalCost, false)
 
     @variable(ed, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
     @variable(ed, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
@@ -124,18 +126,21 @@ function ED(uc, gen_df, storage, VLOL, VLGEN)
     START = ed[:START]
     COMMIT = ed[:COMMIT]
     GEN = ed[:GEN]
-    remove_variable_constraint(ed, :StartCost, false)
+    
     
     @expression(ed, StartCost,
         sum(gen_df[gen_df.r_id .== g,:start_cost_per_mw][1]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*START[g,t] for g in G_thermal for t in T)
     )
 
-    remove_variable_constraint(ed, :OperationalCost, false)
     @expression(ed, OperationalCost,
         sum((gen_df[gen_df.r_id .== g,:heat_rate_mmbtu_per_mwh][1]*gen_df[gen_df.r_id .== g,:fuel_cost][1] + gen_df[gen_df.r_id .== g,:var_om_cost_per_mwh][1])*GEN[g,t] for g in G_nonvar for t in T) +
         sum(gen_df[gen_df.r_id .== g,:var_om_cost_per_mwh][1]*GEN[g,t]  for g in G_var for t in T) + 
         sum(gen_df[gen_df.r_id .== g,:fixed_om_cost_per_mw_per_hour][1]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*COMMIT[g,t] for g in G_thermal for t in T) + 
         sum(gen_df[gen_df.r_id .== g,:fixed_om_cost_per_mw_per_hour][1]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1] for g in G_nt_nonvar for t in T)
+    )
+    
+    @expression(ed, OPEX,
+        ed[:OperationalCost] + ed[:StartCost]
     )
 
     @objective(ed, Min, 
