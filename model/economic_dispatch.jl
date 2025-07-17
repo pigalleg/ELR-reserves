@@ -135,14 +135,21 @@ end
 
 function update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; kwargs...)
     bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
-    constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
     constrain_dispatch = get(kwargs, :constrain_dispatch, true)
     remove_variables_from_objective = get(kwargs, :remove_variables_from_objective, false)
-    constrain_decision_variables(ed, reserve_variables, variables_to_constrain, constrain_SOE_by_envelopes, constrain_dispatch, bidirectional_storage_reserve)
+    constrain_decision_variables(ed, reserve_variables, variables_to_constrain, constrain_dispatch, bidirectional_storage_reserve)
     fix_decision_variables(ed, variables_to_fix, remove_variables_from_objective)
 end
 
-function constrain_decision_variables(model, reserve_variables, variables_to_constrain, constrain_SOE_by_envelopes::Bool, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool)
+function update_SOE_restrictions(ed, envelope_variables, constrain_SOE_by_envelopes)
+    constraint_SOE_final_to_envelopes_UC(ed, envelope_variables)
+    if constrain_SOE_by_envelopes
+        constrain_SOE_to_envelopes(ed, envelope_variables)
+        # add_envelopes_ED(model, E_SOEUP_value, E_SOEDN_value) # to recover it as output
+    end
+end
+
+function constrain_decision_variables(model, reserve_variables, variables_to_constrain, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool)
     # This function will fixes the following decision variables :COMMIT, :START, :SHUT, :RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP
     # If constrain_dispatch = true, it constraints the dispatch variables (up to three: :GEN, :CH and :DIS) according to the reserve procured at UC stage.
     # Variables that do not have a reserve or energy reserve element associated will be fixed to their value at UC stage.
@@ -152,20 +159,12 @@ function constrain_decision_variables(model, reserve_variables, variables_to_con
     # It will also constrain variables in variables_to_constrain according to the reserve procured at UC stage.
     # If remove_variables_from_objective, it will remove the fixed decision variables from the objective function
     #  values extraction
-    if constrain_SOE_by_envelopes # values extraction
-        # envelopes for ED
-        E_SOEUP_value, E_SOEDN_value = generate_envelopes(model) # values extraction
-    end
     constrain_by_energy = haskey(model, :ERESUP) # determines whether reserves or energy reserves
     # reserve_variables = get_reserves_variables(model, constrain_by_energy) # values extraction
     if constrain_dispatch # assumes either ERESUP or RESUP exists
         constrain_dispatch_variables_according_to_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; reserve_variables...)
     end
     constraint_dispatch_variables_with_no_reserve(bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; reserve_variables...) # By default, units not offering reserve will have their dispatch fixed.
-    if constrain_SOE_by_envelopes
-        constrain_SOE_to_envelopes(model, E_SOEUP_value, E_SOEDN_value)
-        add_envelopes_ED(model, E_SOEUP_value, E_SOEDN_value) # to recover it as output
-    end
 end
 
 function constraint_dispatch_variables_with_no_reserve(bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; kwargs...)
@@ -361,12 +360,16 @@ function generate_envelopes(model)
     end
 end
 
-function constrain_SOE_to_envelopes(model, E_SOEUP_value, E_SOEDN_value)
+function constrain_SOE_to_envelopes(model, envelope_variables)
     println("Constraining SOE...")
     SOE = model[:SOE]
     S = axes(SOE)[1]
     T_incr = axes(SOE)[2]
-    if haskey(model, :SOEUP)
+
+    E_SOEUP_value = envelope_variables[1][2]
+    E_SOEDN_value = envelope_variables[2][2]
+
+    if get_variable_base_name(first(first(envelope_variables))) == :SOEUP
         @constraint(model, SOEEnvelopeUP[s in S, t in T_incr],
             SOE[s,t] <= E_SOEUP_value[s,t]
         )
@@ -400,19 +403,20 @@ function constraint_SOE_final_to_envelopes_UC(model, envelope_variables)
 
     E_SOEUP_value = envelope_variables[1][2]
     E_SOEDN_value = envelope_variables[2][2]
+
     if get_variable_base_name(first(first(envelope_variables))) == :SOEUP
-        @constraint(model, SOEFinalDn[s in S],
-            SOE[s,T[end]] >= E_SOEDN_value[s,T[end]]
-        )
         @constraint(model, SOEFinalUp[s in S],
             SOE[s,T[end]] <= E_SOEUP_value[s,T[end]]
         )
-    else
         @constraint(model, SOEFinalDn[s in S],
-            SOE[s,T[end]] >= minimum(E_SOEDN_value[s,:,T[end]])
+            SOE[s,T[end]] >= E_SOEDN_value[s,T[end]]
         )
+    else
         @constraint(model, SOEFinalUp[s in S],
             SOE[s,T[end]] <= maximum(E_SOEUP_value[s,:,T[end]])
+        )
+        @constraint(model, SOEFinalDn[s in S],
+            SOE[s,T[end]] >= minimum(E_SOEDN_value[s,:,T[end]])
         )
     end
 end
