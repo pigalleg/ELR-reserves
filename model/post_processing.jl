@@ -95,7 +95,7 @@ end
 
 
 function merge_solutions(solutions::Dict, merge_keys = [ITERATION])
-    # TODO can be done more elegantly
+    #TODO can be done more elegantly
     # called only by ED
     solution_keys = union([keys(v) for (k,v) in solutions]...)
     aux = Dict(k => [] for k in solution_keys)
