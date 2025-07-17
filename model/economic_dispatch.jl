@@ -157,10 +157,13 @@ function ED(uc, gen_df, storage, VLOL, VLGEN)
         )
     end     
     
+
+    CH = ed[:CH]
+    DIS = ed[:DIS]
     @expression(ed, SupplyDemand[t in T],
-        sum(GEN[g,t] for g in G) + LOL[t] - LGEN[t]
+        sum(GEN[g,t] for g in G) + LOL[t] - LGEN[t]  - sum(CH[s,t] - DIS[s,t] for s in S)
     )
-    
+
     @constraint(ed, SupplyDemandBalance[t in T], # Update of p_DEMAND constraint is performed within the Monte Carlo loop
         SupplyDemand[t] == p_DEMAND[t]
     )
@@ -416,7 +419,7 @@ function remove_energy_and_reserve_constraints(model)
         :Startup, :Shutdown, :CommitmentStatus,
         #:RESUP, :RESDN, -> do not remove because belong to the OF.
         # :RESUP, :RESDN, :ERESUP, :ERESDN, 
-        # :RESUPCH, :RESDNCH, :RESUPDIS, :RESDNDIS,
+        :RESUPCH, :RESDNCH, :RESUPDIS, :RESDNDIS,
         :ERESUPCH, :ERESDNCH, :ERESUPDIS, :ERESDNDIS,
         # :COMMIT, :START, :SHUT, -> do not remove because belong to the OF.
         ]
