@@ -398,22 +398,21 @@ function constraint_SOE_final_to_envelopes_UC(model, envelope_variables)
     T =  axes(model[:SupplyDemandBalance])[1]
     remove_variable_constraint(model, :SOEFinal)
 
-    E_SOEUP_UC_value = envelope_variables[1][2]
-    E_SOEDN_UC_value = envelope_variables[2][2]
-
+    E_SOEUP_value = envelope_variables[1][2]
+    E_SOEDN_value = envelope_variables[2][2]
     if get_variable_base_name(first(first(envelope_variables))) == :SOEUP
         @constraint(model, SOEFinalDn[s in S],
-            SOE[s,T[end]] >= E_SOEUP_UC_value[s,T[end]]
+            SOE[s,T[end]] >= E_SOEDN_value[s,T[end]]
         )
         @constraint(model, SOEFinalUp[s in S],
-            SOE[s,T[end]] <= E_SOEDN_UC_value[s,T[end]]
+            SOE[s,T[end]] <= E_SOEUP_value[s,T[end]]
         )
     else
         @constraint(model, SOEFinalDn[s in S],
-            SOE[s,T[end]] >= minimum(E_SOEUP_UC_value[s,:,T[end]])
+            SOE[s,T[end]] >= minimum(E_SOEDN_value[s,:,T[end]])
         )
         @constraint(model, SOEFinalUp[s in S],
-            SOE[s,T[end]] <= maximum(E_SOEDN_UC_value[s,:,T[end]])
+            SOE[s,T[end]] <= maximum(E_SOEUP_value[s,:,T[end]])
         )
     end
 end
