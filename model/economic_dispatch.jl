@@ -58,15 +58,16 @@ end
 
 
 
-function construct_economic_dispatch(uc, gen_df; kwargs... )
+function construct_economic_dispatch(gen_df; kwargs... )
     VLOL = get(kwargs, :VLOL, 1e4)
     VLGEN = get(kwargs, :VLGEN, 0)
     storage = get(kwargs, :storage, nothing)
     ramp_constraints = get(kwargs, :ramp_constraints, true)
     sets =  get_sets(gen_df)
     extra_OV = get(kwargs, :extra_OV, 0)
+    mip_gap = get(kwargs, :mip_gap, 1e-8)
 
-    ed = ED(uc, gen_df, VLOL, VLGEN, extra_OV)
+    ed = ED(gen_df, VLOL, VLGEN, mip_gap, extra_OV)
     if !isnothing(storage)
         println("Adding storage...")
         add_storage(ed, storage, sets, true)
@@ -75,12 +76,12 @@ function construct_economic_dispatch(uc, gen_df; kwargs... )
         println("Adding ramp constraints...")   
         add_ramp_constraints(ed, gen_df, sets)
     end
-    remove_energy_and_reserve_constraints(ed)
+    # remove_energy_and_reserve_constraints(ed)
     return ed
 end
 
 
-function ED(uc, gen_df, VLOL, VLGEN, extra_OV)
+function ED(gen_df, VLOL, VLGEN, mip_gap, extra_OV)
     println("Constructing ED...")
     # Outputs EC by fixing variables of UC
     sets = get_sets(gen_df)
@@ -94,53 +95,44 @@ function ED(uc, gen_df, VLOL, VLGEN, extra_OV)
 
     VLOL = convert_to_indexed_vector(VLOL, T)
     VLGEN = convert_to_indexed_vector(VLGEN, T)
-    # ed, reference_map = copy_model(uc)
-    # ed = JuMP.copy(uc)
-    # set_optimizer(ed, Gurobi.Optimizer)
-    # set_optimizer_attribute(ed, "OutputFlag", 0)
-    # set_optimizer_attribute(ed, "MIPGap", get_optimizer_attribute(uc,"MIPGap"))            
-    # optimize!(ed)
-    ed = uc # pointer, uc object will change
+
+    # ed = uc # pointer, uc object will change
+    ed = Model()
+    initialize_model(ed, mip_gap)
     # set_optimizer_attribute(ed, "TimeLimit", 60.0)    # 60 seconds
     
-    # add_envelopes_UC(ed)
-    
-    # update_dispatch_restrictions(ed, reserve_variables, variables_to_fix; config...)
-    # constraint_SOE_final_to_envelopes(ed) # redundant when constrain_SOE_by_envelopes == true
-    # update objective function with LOL term and LGEN
 
-    remove_variable_constraint(ed, :p_DEMAND, true)
-    remove_variable_constraint(ed, :p_MAX_GEN, true)
-    remove_variable_constraint(ed, :SupplyDemand, false)
-    remove_variable_constraint(ed, :SupplyDemandBalance, true)
-    remove_variable_constraint(ed, :Cap_thermal_min, true)
-    remove_variable_constraint(ed, :Cap_thermal_max, true)
-    remove_variable_constraint(ed, :Cap_nt_nonvar, true)
-    remove_variable_constraint(ed, :Cap_var, true)
-    remove_variable_constraint(ed, :OPEX, false)
-    remove_variable_constraint(ed, :StartCost, false)
-    remove_variable_constraint(ed, :OperationalCost, false)
-    remove_variable_constraint(ed, :AuxGen, true)
-    remove_variable_constraint(ed, :RampUp_thermal, true)
-    remove_variable_constraint(ed, :RampDn_thermal, true)
-    remove_variable_constraint(ed, :RampUp_nonthermal, true)
-    remove_variable_constraint(ed, :RampDn_nonthermal, true)
-    remove_variable_constraint(ed, :GENAUX, false)
-
-    remove_variable_constraint(ed, :CH, true)
-    remove_variable_constraint(ed, :DIS, true)
-    remove_variable_constraint(ed, :SOE, true)
-    remove_variable_constraint(ed, :M, true)
-    remove_variable_constraint(ed, :StorageOperationalCost, false)
-    remove_variable_constraint(ed, :ChargeLogic, true)
-    remove_variable_constraint(ed, :DischargeLogic, true)
-    remove_variable_constraint(ed, :SOEEvol, true)
-    remove_variable_constraint(ed, :SOEMax, true)
-    remove_variable_constraint(ed, :SOEMin, true)
-    remove_variable_constraint(ed, :CHMin, true)
-    remove_variable_constraint(ed, :DISMin, true)
-    remove_variable_constraint(ed, :SOEO, true)
-    remove_variable_constraint(ed, :SOEFinal, true)
+    # remove_variable_constraint(ed, :p_DEMAND, true)
+    # remove_variable_constraint(ed, :p_MAX_GEN, true)
+    # remove_variable_constraint(ed, :SupplyDemand, false)
+    # remove_variable_constraint(ed, :SupplyDemandBalance, true)
+    # remove_variable_constraint(ed, :Cap_thermal_min, true)
+    # remove_variable_constraint(ed, :Cap_thermal_max, true)
+    # remove_variable_constraint(ed, :Cap_nt_nonvar, true)
+    # remove_variable_constraint(ed, :Cap_var, true)
+    # remove_variable_constraint(ed, :OPEX, false)
+    # remove_variable_constraint(ed, :StartCost, false)
+    # remove_variable_constraint(ed, :OperationalCost, false)
+    # remove_variable_constraint(ed, :AuxGen, true)
+    # remove_variable_constraint(ed, :RampUp_thermal, true)
+    # remove_variable_constraint(ed, :RampDn_thermal, true)
+    # remove_variable_constraint(ed, :RampUp_nonthermal, true)
+    # remove_variable_constraint(ed, :RampDn_nonthermal, true)
+    # remove_variable_constraint(ed, :GENAUX, false)
+    # remove_variable_constraint(ed, :CH, true)
+    # remove_variable_constraint(ed, :DIS, true)
+    # remove_variable_constraint(ed, :SOE, true)
+    # remove_variable_constraint(ed, :M, true)
+    # remove_variable_constraint(ed, :StorageOperationalCost, false)
+    # remove_variable_constraint(ed, :ChargeLogic, true)
+    # remove_variable_constraint(ed, :DischargeLogic, true)
+    # remove_variable_constraint(ed, :SOEEvol, true)
+    # remove_variable_constraint(ed, :SOEMax, true)
+    # remove_variable_constraint(ed, :SOEMin, true)
+    # remove_variable_constraint(ed, :CHMin, true)
+    # remove_variable_constraint(ed, :DISMin, true)
+    # remove_variable_constraint(ed, :SOEO, true)
+    # remove_variable_constraint(ed, :SOEFinal, true)
 
 
     @variable(ed, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
@@ -149,20 +141,21 @@ function ED(uc, gen_df, VLOL, VLGEN, extra_OV)
     @variable(ed, VLOL[t in keys(VLOL)] in Parameter(VLOL[t])) # for post-processing purposes
     @variable(ed, VLGEN[t in keys(VLGEN)] in Parameter(VLGEN[t])) # for post-processing purposes
     
-    #  @variables(ed, begin
-    #     GEN[G, T]  >= 0 # generation
-    #     COMMIT[G_thermal, T], Bin # commitment status (Bin=binary)
-    #     START[G_thermal, T], Bin  # startup decision
-    # end)
+     @variables(ed, begin
+        GEN[G, T]  >= 0 # generation
+        COMMIT[G_thermal, T], Bin # commitment status (Bin=binary)
+        START[G_thermal, T], Bin  # startup decision
+        SHUT[G_thermal, T], Bin   # shutdown decision
+    end)
 
     @variables(ed, begin 
         LOL[T] >= 0
         LGEN[T] >= 0
         end)
 
-    START = ed[:START]
-    COMMIT = ed[:COMMIT]
-    GEN = ed[:GEN]
+    # START = ed[:START]
+    # COMMIT = ed[:COMMIT]
+    # GEN = ed[:GEN]
     
     
     @expression(ed, StartCost,
