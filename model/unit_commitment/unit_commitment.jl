@@ -20,7 +20,7 @@ function construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_
     uc = DUC(gen_df)
     if !isnothing(storage)
         println("Adding storage...")
-        add_storage(uc, storage, gen_df, sets)
+        add_storage(uc, storage, sets)
     end
     if ramp_constraints
         println("Adding ramp constraints...")   

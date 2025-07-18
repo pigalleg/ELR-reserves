@@ -66,10 +66,10 @@ function construct_economic_dispatch(uc, gen_df; kwargs... )
     sets =  get_sets(gen_df)
     
     ed = ED(uc, gen_df, storage, VLOL, VLGEN)
-    # if !isnothing(storage)
-    #     println("Adding storage...")
-    #     add_storage(ed, storage, gen_df, sets)
-    # end
+    if !isnothing(storage)
+        println("Adding storage...")
+        add_storage(ed, storage, sets)
+    end
     if ramp_constraints
         println("Adding ramp constraints...")   
         add_ramp_constraints(ed, gen_df, sets)
@@ -126,6 +126,22 @@ function ED(uc, gen_df, storage, VLOL, VLGEN)
     remove_variable_constraint(ed, :RampDn_nonthermal, true)
     remove_variable_constraint(ed, :GENAUX, false)
 
+    remove_variable_constraint(ed, :CH, true)
+    remove_variable_constraint(ed, :DIS, true)
+    remove_variable_constraint(ed, :SOE, true)
+    remove_variable_constraint(ed, :M, true)
+    remove_variable_constraint(ed, :StorageOperationalCost, false)
+    remove_variable_constraint(ed, :ChargeLogic, true)
+    remove_variable_constraint(ed, :DischargeLogic, true)
+    remove_variable_constraint(ed, :SOEEvol, true)
+    remove_variable_constraint(ed, :SOEMax, true)
+    remove_variable_constraint(ed, :SOEMin, true)
+    remove_variable_constraint(ed, :CHMin, true)
+    remove_variable_constraint(ed, :DISMin, true)
+    remove_variable_constraint(ed, :SOEO, true)
+    remove_variable_constraint(ed, :SOEFinal, true)
+
+
     @variable(ed, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
     @variable(ed, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
 
@@ -166,11 +182,11 @@ function ED(uc, gen_df, storage, VLOL, VLGEN)
     @objective(ed, Min, 
         ed[:OPEX] + sum(LOL[t]*VLOL[t] + LGEN[t]*VLGEN[t] for t in T)
     )
-    if haskey(ed, :StorageOperationalCost)
-        @objective(ed, Min, 
-            objective_function(ed) + ed[:StorageOperationalCost]
-        )
-    end
+    # if haskey(ed, :StorageOperationalCost)
+    #     @objective(ed, Min, 
+    #         objective_function(ed) + ed[:StorageOperationalCost]
+    #     )
+    # end
     if haskey(ed, :ReservePenalizationCost)
         @objective(ed, Min, 
             objective_function(ed) + ed[:ReservePenalizationCost] + ed[:ReserveSlackPenalizationCost]
@@ -181,13 +197,9 @@ function ED(uc, gen_df, storage, VLOL, VLGEN)
             objective_function(ed) + ed[:EnergyReservePenalizationCost] + ed[:EnergyReserveSlackPenalizationCost]
         )
     end     
-    
 
-    CH = ed[:CH]
-    DIS = ed[:DIS]
-    S = create_storage_sets(storage)
     @expression(ed, SupplyDemand[t in T],
-        sum(GEN[g,t] for g in G) + LOL[t] - LGEN[t]  - sum(CH[s,t] - DIS[s,t] for s in S)
+        sum(GEN[g,t] for g in G) + LOL[t] - LGEN[t]
     )
 
     @constraint(ed, SupplyDemandBalance[t in T], # Update of p_DEMAND constraint is performed within the Monte Carlo loop
