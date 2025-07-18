@@ -68,13 +68,13 @@ function construct_economic_dispatch(uc, gen_df; kwargs... )
     ed = ED(uc, gen_df, storage, VLOL, VLGEN)
     if !isnothing(storage)
         println("Adding storage...")
-        add_storage(ed, storage, sets)
+        add_storage(ed, storage, sets, true)
     end
     if ramp_constraints
         println("Adding ramp constraints...")   
         add_ramp_constraints(ed, gen_df, sets)
     end
-
+    remove_energy_and_reserve_constraints(ed)
     return ed
 end
 
@@ -207,8 +207,6 @@ function ED(uc, gen_df, storage, VLOL, VLGEN)
     )
 
     add_capacity_constraints(ed, gen_df, sets)
-
-    remove_energy_and_reserve_constraints(ed)
     println("...done")
     return ed
 end

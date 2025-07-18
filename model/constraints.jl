@@ -69,13 +69,13 @@ function add_ramp_constraints(model, gen_df, sets)
 end
 
 
-function add_storage(model, storage, sets)
+function add_storage(model, storage, sets, set_ov = true)
     T = sets.T 
     T_incr = copy(T)
     pushfirst!(T_incr, T_incr[1]-1) # T_incr = [t[1]-1,T]
     S = create_storage_sets(storage)
     
-    GEN = model[:GEN]
+    # GEN = model[:GEN]
     p_DEMAND = model[:p_DEMAND]
     # START = model[:START]
     
@@ -91,13 +91,15 @@ function add_storage(model, storage, sets)
         sum(storage[storage.r_id .== s,:var_om_cost_per_mwh][1]*(CH[s,t] + DIS[s,t]) for s in S, t in T)
     )
 
+    @objective(model, Min,
+        objective_function(model) + model[:StorageOperationalCost]
+    )
+
     OPEX = model[:OPEX]
     remove_variable_constraint(model, :OPEX, false)
     @expression(model, OPEX,
-        OPEX + StorageOperationalCost
+        OPEX + model[:StorageOperationalCost]
     )
-
-    @objective(model, Min, objective_function(model) + StorageOperationalCost)
 
     # Redefinition of supply-demand balance expression and constraint
     SupplyDemand = model[:SupplyDemand]
