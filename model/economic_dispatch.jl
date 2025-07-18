@@ -64,8 +64,9 @@ function construct_economic_dispatch(uc, gen_df; kwargs... )
     storage = get(kwargs, :storage, nothing)
     ramp_constraints = get(kwargs, :ramp_constraints, true)
     sets =  get_sets(gen_df)
-    
-    ed = ED(uc, gen_df, storage, VLOL, VLGEN)
+    extra_OV = get(kwargs, :extra_OV, 0)
+
+    ed = ED(uc, gen_df, VLOL, VLGEN, extra_OV)
     if !isnothing(storage)
         println("Adding storage...")
         add_storage(ed, storage, sets, true)
@@ -79,7 +80,7 @@ function construct_economic_dispatch(uc, gen_df; kwargs... )
 end
 
 
-function ED(uc, gen_df, storage, VLOL, VLGEN)
+function ED(uc, gen_df, VLOL, VLGEN, extra_OV)
     println("Constructing ED...")
     # Outputs EC by fixing variables of UC
     sets = get_sets(gen_df)
@@ -180,23 +181,23 @@ function ED(uc, gen_df, storage, VLOL, VLGEN)
     )
 
     @objective(ed, Min, 
-        ed[:OPEX] + sum(LOL[t]*VLOL[t] + LGEN[t]*VLGEN[t] for t in T)
+        ed[:OPEX] + sum(LOL[t]*VLOL[t] + LGEN[t]*VLGEN[t] for t in T) + extra_OV
     )
     # if haskey(ed, :StorageOperationalCost)
     #     @objective(ed, Min, 
     #         objective_function(ed) + ed[:StorageOperationalCost]
     #     )
     # end
-    if haskey(ed, :ReservePenalizationCost)
-        @objective(ed, Min, 
-            objective_function(ed) + ed[:ReservePenalizationCost] + ed[:ReserveSlackPenalizationCost]
-        )
-    end
-    if haskey(ed, :EnergyReservePenalizationCost)
-        @objective(ed, Min, 
-            objective_function(ed) + ed[:EnergyReservePenalizationCost] + ed[:EnergyReserveSlackPenalizationCost]
-        )
-    end     
+    # if haskey(ed, :ReservePenalizationCost)
+    #     @objective(ed, Min, 
+    #         objective_function(ed) + ed[:ReservePenalizationCost] + ed[:ReserveSlackPenalizationCost]
+    #     )
+    # end
+    # if haskey(ed, :EnergyReservePenalizationCost)
+    #     @objective(ed, Min, 
+    #         objective_function(ed) + ed[:EnergyReservePenalizationCost] + ed[:EnergyReserveSlackPenalizationCost]
+    #     )
+    # end     
 
     @expression(ed, SupplyDemand[t in T],
         sum(GEN[g,t] for g in G) + LOL[t] - LGEN[t]
@@ -215,7 +216,8 @@ function update_dispatch_restrictions(ed, reserve_variables, variables_to_constr
     bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
     constrain_dispatch = get(kwargs, :constrain_dispatch, true)
     remove_variables_from_objective = get(kwargs, :remove_variables_from_objective, false)
-    constrain_decision_variables(ed, reserve_variables, variables_to_constrain, constrain_dispatch, bidirectional_storage_reserve)
+    constrain_by_energy =  get_variable_base_name(first(reserve_variables[:res_up_var])) == :ERESUP
+    constrain_decision_variables(ed, reserve_variables, variables_to_constrain, constrain_dispatch, constrain_by_energy, bidirectional_storage_reserve)
     fix_decision_variables(ed, variables_to_fix, remove_variables_from_objective)
 end
 
@@ -226,7 +228,7 @@ function update_SOE_restrictions(ed, envelope_variables, constrain_SOE_by_envelo
     end
 end
 
-function constrain_decision_variables(model, reserve_variables, variables_to_constrain, constrain_dispatch::Bool, bidirectional_storage_reserve::Bool)
+function constrain_decision_variables(model, reserve_variables, variables_to_constrain, constrain_dispatch, constrain_by_energy, bidirectional_storage_reserve)
     # This function will fixes the following decision variables :COMMIT, :START, :SHUT, :RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP
     # If constrain_dispatch = true, it constraints the dispatch variables (up to three: :GEN, :CH and :DIS) according to the reserve procured at UC stage.
     # Variables that do not have a reserve or energy reserve element associated will be fixed to their value at UC stage.
@@ -236,7 +238,7 @@ function constrain_decision_variables(model, reserve_variables, variables_to_con
     # It will also constrain variables in variables_to_constrain according to the reserve procured at UC stage.
     # If remove_variables_from_objective, it will remove the fixed decision variables from the objective function
     #  values extraction
-    constrain_by_energy = haskey(model, :ERESUP) # determines whether reserves or energy reserves
+    # constrain_by_energy = haskey(model, :ERESUP) # determines whether reserves or energy reserves
     # reserve_variables = get_reserves_variables(model, constrain_by_energy) # values extraction
     if constrain_dispatch # assumes either ERESUP or RESUP exists
         constrain_dispatch_variables_according_to_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; reserve_variables...)
