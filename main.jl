@@ -288,7 +288,6 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         
         uc = copy(uc_)
         initialize_model(uc, config[:mip_gap])
-
         update_daily_data(uc, loads_df, gen_variable_df, storage_df, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
         optimize!(uc)
         s_uc[(day,μ_config.key)] = get_model_solution(
@@ -304,12 +303,17 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         envelope_variables = get_envelope_variables(uc)
         variables_to_fix = get_variables_to_fix(uc) # values extraction
         variables_to_constrain = get_variables_to_constrain(uc; config...) # values extraction
-        
+
+        if haskey(uc, :ReservePenalizationCost)
+            config[:extra_OV] = value(uc[:ReservePenalizationCost])
+        elseif haskey(uc, :EnergyReservePenalizationCost)
+            config[:extra_OV] = value(uc[:EnergyReservePenalizationCost])
+        end
+
         ed = construct_economic_dispatch(uc, gen_df; config...)
         update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; config...)
         update_SOE_restrictions(ed, envelope_variables, config[:constrain_SOE_by_envelopes])
-        # update_dispatch_restrictions(ed; config...)
-        # constrain_decision_variables(ed) # according to the uc's output
+
         s_ed[(day,μ_config.key)] = launch_monte_carlo_get_solution(
             ed,
             gen_df,
