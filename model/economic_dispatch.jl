@@ -61,7 +61,21 @@ end
 function construct_economic_dispatch(uc, gen_df; kwargs... )
     VLOL = get(kwargs, :VLOL, 1e4)
     VLGEN = get(kwargs, :VLGEN, 0)
-    return ED(uc, gen_df, kwargs[:storage], VLOL, VLGEN)
+    storage = get(kwargs, :storage, nothing)
+    ramp_constraints = get(kwargs, :ramp_constraints, true)
+    sets =  get_sets(gen_df)
+    
+    ed = ED(uc, gen_df, storage, VLOL, VLGEN)
+    # if !isnothing(storage)
+    #     println("Adding storage...")
+    #     add_storage(ed, storage, gen_df, sets)
+    # end
+    if ramp_constraints
+        println("Adding ramp constraints...")   
+        add_ramp_constraints(ed, gen_df, sets)
+    end
+
+    return ed
 end
 
 
@@ -105,6 +119,12 @@ function ED(uc, gen_df, storage, VLOL, VLGEN)
     remove_variable_constraint(ed, :OPEX, false)
     remove_variable_constraint(ed, :StartCost, false)
     remove_variable_constraint(ed, :OperationalCost, false)
+    remove_variable_constraint(ed, :AuxGen, true)
+    remove_variable_constraint(ed, :RampUp_thermal, true)
+    remove_variable_constraint(ed, :RampDn_thermal, true)
+    remove_variable_constraint(ed, :RampUp_nonthermal, true)
+    remove_variable_constraint(ed, :RampDn_nonthermal, true)
+    remove_variable_constraint(ed, :GENAUX, false)
 
     @variable(ed, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
     @variable(ed, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
