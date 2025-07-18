@@ -69,7 +69,7 @@ function add_ramp_constraints(model, gen_df, sets)
 end
 
 
-function add_storage(model, storage, gen_df, sets)
+function add_storage(model, storage, sets)
     T = sets.T 
     T_incr = copy(T)
     pushfirst!(T_incr, T_incr[1]-1) # T_incr = [t[1]-1,T]
@@ -94,21 +94,23 @@ function add_storage(model, storage, gen_df, sets)
     OPEX = model[:OPEX]
     remove_variable_constraint(model, :OPEX, false)
     @expression(model, OPEX,
-        OPEX + model[:StorageOperationalCost]
+        OPEX + StorageOperationalCost
     )
-    @objective(model, Min,
-        model[:OPEX]
-    )
+
+    @objective(model, Min, objective_function(model) + StorageOperationalCost)
 
     # Redefinition of supply-demand balance expression and constraint
     SupplyDemand = model[:SupplyDemand]
-    unregister(model, :SupplyDemand)
+    # unregister(model, :SupplyDemand)
+    remove_variable_constraint(model, :SupplyDemand, false)
     @expression(model, SupplyDemand[t in T],
         SupplyDemand[t] - sum(CH[s,t] - DIS[s,t] for s in S)
     )
-    SupplyDemandBalance = model[:SupplyDemandBalance]
-    delete.(model, SupplyDemandBalance) # Constraints must be deleted also
-    unregister(model, :SupplyDemandBalance)
+
+    # SupplyDemandBalance = model[:SupplyDemandBalance]
+    # delete.(model, SupplyDemandBalance) # Constraints must be deleted also
+    # unregister(model, :SupplyDemandBalance)
+    remove_variable_constraint(model, :SupplyDemandBalance, true)
     @constraint(model, SupplyDemandBalance[t in T], 
         SupplyDemand[t] == p_DEMAND[t]
     )
