@@ -310,7 +310,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
             config[:extra_OV] = value(uc[:EnergyReservePenalizationCost])
         end
 
-        ed = construct_economic_dispatch(uc, gen_df; config...)
+        ed = construct_economic_dispatch(gen_df; config...)
         update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; config...)
         update_SOE_restrictions(ed, envelope_variables, config[:constrain_SOE_by_envelopes])
 
