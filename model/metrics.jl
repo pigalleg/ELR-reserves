@@ -165,7 +165,8 @@ function calculate_adecuacy_gcd_KPI(gcdi_KPI)
 end
 
 function calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by)
-    keys_objective_value = intersect([:production_cost, :fixed_cost, :start_cost, :LOL_cost, :LGEN_cost, :reserve_cost, :slack_reserve_up_cost, :slack_reserve_down_cost,:energy_reserve_cost, :slack_energy_reserve_up_cost, :slack_energy_reserve_down_cost], propertynames(s_ed.objective_function))
+    keys_objective_value_ = [:production_cost, :fixed_cost, :start_cost, :LOL_cost, :LGEN_cost, :reserve_cost, :slack_reserve_up_cost, :slack_reserve_down_cost,:energy_reserve_cost, :slack_energy_reserve_up_cost, :slack_energy_reserve_down_cost]
+    keys_objective_value = intersect(keys_objective_value_, propertynames(s_ed.objective_function))
     out = combine(groupby(s_ed.objective_function, group_by), keys_objective_value .=> (x -> sum(skipmissing(x))), renamecols = false)
     out.OPEX = out.production_cost .+ out.fixed_cost .+ out.start_cost # this OPEX definition corresponds to model[:OPEX]
     out.objective_value = sum(eachcol(out[:,keys_objective_value]))
@@ -173,7 +174,7 @@ function calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by)
     # out.objective_value = out.OPEX .+ out.LOL_cost .+ out.LGEN_cost .+ out.reserve_cost # this objective value definition correspond to objective_function(model)
     if !isnothing(s_uc)
         group_by_uc = intersect([:configuration, :day], group_by)
-        keys_objective_value_uc = intersect(keys_objective_value, propertynames(s_uc.objective_function))
+        keys_objective_value_uc = intersect(keys_objective_value_, propertynames(s_uc.objective_function))
         leftjoin!(out, combine(groupby(s_uc.objective_function, group_by_uc), keys_objective_value_uc .=> (x -> sum(skipmissing(x))) .=> Symbol.(keys_objective_value_uc, "_uc")), on = group_by_uc)
         out.OPEX_uc = out.production_cost_uc .+ out.fixed_cost_uc .+ out.start_cost_uc
         out.objective_value_uc = out.OPEX_uc
