@@ -84,6 +84,9 @@ end
 function ED(gen_df, VLOL, VLGEN, mip_gap, extra_OV)
     println("Constructing ED...")
     # Outputs EC by fixing variables of UC
+    ed = Model()
+    initialize_model(ed, mip_gap)
+
     sets = get_sets(gen_df)
     G = sets.G
     G_thermal = sets.G_thermal
@@ -97,8 +100,7 @@ function ED(gen_df, VLOL, VLGEN, mip_gap, extra_OV)
     VLGEN = convert_to_indexed_vector(VLGEN, T)
 
     # ed = uc # pointer, uc object will change
-    ed = Model()
-    initialize_model(ed, mip_gap)
+    
     # set_optimizer_attribute(ed, "TimeLimit", 60.0)    # 60 seconds
     
 
@@ -170,11 +172,11 @@ function ED(gen_df, VLOL, VLGEN, mip_gap, extra_OV)
     )
     
     @expression(ed, OPEX,
-        ed[:OperationalCost] + ed[:StartCost]
+        OperationalCost + StartCost
     )
 
     @objective(ed, Min, 
-        ed[:OPEX] + sum(LOL[t]*VLOL[t] + LGEN[t]*VLGEN[t] for t in T) + extra_OV
+        OPEX + sum(LOL[t]*VLOL[t] + LGEN[t]*VLGEN[t] for t in T) + extra_OV
     )
     # if haskey(ed, :StorageOperationalCost)
     #     @objective(ed, Min, 
@@ -405,14 +407,23 @@ end
 function fix_decision_variables(model, variables, remove_variables_from_objective = true)
     println("Fixing decision variables...")
     for (var, var_value) in variables
-    # for (var, var_value) in [(model[var], value.(model[var])) for var in decision_variables]
-        # for key in collect(keys(var))
-        for key in collect(eachindex(var))  
-           fix(var[key], var_value[key]; force = !is_binary(var[key]))
-           if remove_variables_from_objective 
-                println("Removing fixed decision variables from objective...")
-                set_objective_coefficient(model, var[key], 0) # when set to zero they are removed from objective function
-            end 
+        # Get the variable name from the original model
+        var_name = get_variable_base_name(var)
+        
+        # Check if this variable exists in the current model
+        if haskey(model, var_name)
+            model_var = model[var_name]
+            
+            # Fix variables in the current model using values from the other model
+            for key in collect(eachindex(model_var))
+                fix(model_var[key], var_value[key]; force = !is_binary(model_var[key]))
+                if remove_variables_from_objective 
+                    println("Removing fixed decision variables from objective...")
+                    set_objective_coefficient(model, model_var[key], 0)
+                end
+            end
+        else
+            println("Variable $var_name not found in model - skipping")
         end
     end
 end
