@@ -44,94 +44,6 @@ function plot_results(solution, required_reserve)
 end
 
 
-G_day = 7 # 68
-G_RESERVE = 0.1
-G_ε = 0.025
-G_ρ = 0
-G_input_folder = "./input/base_case_increased_storage_energy_v4.2"
-# G_REMOVE_RESERVE_CONSTRAINTS = true
-# G_CONSTRAIN_DISPATCH = true
-# G_MAX_ITERATIONS = 100
-# G_VRESERVE = 1e-6
-# G_REMOVE_VARIABLES_FROM_OBJECTIVE = false
-
-
-config = (
-    ramp_constraints = true,
-    # energy_reserve = required_energy_reserve,
-    # energy_reserve = required_energy_reserve_cumulated,
-    enriched_solution = true,
-    
-    # μ_up = 1,
-    # μ_dn = 1,
-)
-  
-
-
-
-function duc(;input_folder, day, kwargs...)
-    # input_folder = get(kwargs, :input_folder, G_input_folder)
-    # day = get(kwargs, :day, G_day)
-    gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
-    storage_df.max_energy_mwh .=storage_df.max_energy_mwh*get(kwargs, :storage_max_energy_factor, 1)
-    storage_df.existing_cap_mw .=storage_df.existing_cap_mw*get(kwargs, :storage_max_cap_factor, 1)
-    config = (
-
-        ramp_constraints = true,
-        enriched_solution = true,
-        storage = storage_df,
-        reserve = required_reserve,
-        storage_envelopes = true,
-        get_dual_variables = true,
-        mip_gap = get(kwargs, :mip_gap, 1e-8),
-        # energy_reserve = generate_energy_reserve(day, input_folder, loads_df, gen_variable_df, G_ε, G_ρ),
-        # energy_reserve = generate_energy_reserves_deprecated(required_reserve),
-        # energy_reserve = generate_energy_reserves_cumulative(required_reserve),
-        storage_link_constraint = false,
-        μ_up = get(kwargs, :μ_up, 1),
-        μ_dn = get(kwargs, :μ_dn, 1),
-    )
-    model= solve_unit_commitment(
-        gen_df,
-        loads_df,
-        gen_variable_df;
-        config...
-        )
-    return model, get_model_solution(model, gen_df, gen_variable_df; loads = loads_df, config...), required_reserve
-end
-
-function suc(;kwargs...)
-    input_folder = get(kwargs, :input_folder, G_input_folder)
-    day = get(kwargs, :day, G_day)
-    expected_min_SOE = get(kwargs, :expected_min_SOE, false)
-    gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
-    scenarios = load_scenarios(day, input_folder, loads_df, required_reserve)
-    return solve_unit_commitment(
-        gen_df,
-        loads_df,
-        gen_variable_df,
-        scenarios;
-        storage = storage_df,
-        expected_min_SOE = expected_min_SOE,
-        config...
-        )
-end
-
-function ed(;kwargs...)
-    input_folder = get(kwargs, :input_folder, G_input_folder)
-    day = get(kwargs, :day, G_day)
-    gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
-    solution  = solve_economic_dispatch_get_solution(
-        duc(;kwargs...),
-        gen_df,
-        random_loads_df,
-        gen_variable_df;
-        config...
-        )
-    return solution
-end
-
-
 function merge_solutions_df(solution_name, solution_folders, folder_path)
     solution = [parquet_to_solution(solution_name, joinpath(folder_path, s)) for s in solution_folders]
     solution = NamedTuple(k => vcat([s[k] for s in solution if haskey(s, k)]...) for k in Set(union([keys(x) for x in solution]...)))
@@ -219,6 +131,94 @@ function generate_post_processing_KPI_files(folder_path; stochastic = false, fol
     # return out
 end
 
+
+G_day = 7 # 68
+G_RESERVE = 0.1
+G_ε = 0.025
+G_ρ = 0
+G_input_folder = "./input/base_case_increased_storage_energy_v4.2"
+# G_REMOVE_RESERVE_CONSTRAINTS = true
+# G_CONSTRAIN_DISPATCH = true
+# G_MAX_ITERATIONS = 100
+# G_VRESERVE = 1e-6
+# G_REMOVE_VARIABLES_FROM_OBJECTIVE = false
+
+
+config = (
+    ramp_constraints = true,
+    # energy_reserve = required_energy_reserve,
+    # energy_reserve = required_energy_reserve_cumulated,
+    enriched_solution = true,
+    
+    # μ_up = 1,
+    # μ_dn = 1,
+)
+  
+
+function duc(;input_folder, day, kwargs...)
+    # input_folder = get(kwargs, :input_folder, G_input_folder)
+    # day = get(kwargs, :day, G_day)
+    gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
+    storage_df.max_energy_mwh .=storage_df.max_energy_mwh*get(kwargs, :storage_max_energy_factor, 1)
+    storage_df.existing_cap_mw .=storage_df.existing_cap_mw*get(kwargs, :storage_max_cap_factor, 1)
+    config = (
+
+        ramp_constraints = true,
+        enriched_solution = true,
+        storage = storage_df,
+        reserve = required_reserve,
+        storage_envelopes = true,
+        get_dual_variables = true,
+        mip_gap = get(kwargs, :mip_gap, 1e-8),
+        # energy_reserve = generate_energy_reserve(day, input_folder, loads_df, gen_variable_df, G_ε, G_ρ),
+        # energy_reserve = generate_energy_reserves_deprecated(required_reserve),
+        # energy_reserve = generate_energy_reserves_cumulative(required_reserve),
+        storage_link_constraint = false,
+        μ_up = get(kwargs, :μ_up, 1),
+        μ_dn = get(kwargs, :μ_dn, 1),
+    )
+    model= solve_unit_commitment(
+        gen_df,
+        loads_df,
+        gen_variable_df;
+        config...
+        )
+    return model, get_model_solution(model, gen_df, gen_variable_df; loads = loads_df, config...), required_reserve
+end
+
+function suc(;kwargs...)
+    input_folder = get(kwargs, :input_folder, G_input_folder)
+    day = get(kwargs, :day, G_day)
+    expected_min_SOE = get(kwargs, :expected_min_SOE, false)
+    gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
+    scenarios = load_scenarios(day, input_folder, loads_df, required_reserve)
+    return solve_unit_commitment(
+        gen_df,
+        loads_df,
+        gen_variable_df,
+        scenarios;
+        storage = storage_df,
+        expected_min_SOE = expected_min_SOE,
+        config...
+        )
+end
+
+function ed(;kwargs...)
+    input_folder = get(kwargs, :input_folder, G_input_folder)
+    day = get(kwargs, :day, G_day)
+    gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
+    solution  = solve_economic_dispatch_get_solution(
+        duc(;kwargs...),
+        gen_df,
+        random_loads_df,
+        gen_variable_df;
+        config...
+        )
+    return solution
+end
+
+
+
 function generate_ed_solutions(;days, kwargs...)
     function generate_μ_configurations(μs) #   μs = [(μ_key = (up =::Vector, down=::Vector),)...]  # configuration name is for labeling purposes only
         mu_to_string(x) = isinteger(x) ? string(Int(x)) : replace(string(x), "." => "_")
@@ -270,7 +270,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
     
     gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve, required_energy_reserve = generate_deterministic_input_data(input_folder)
     config = merge(add_to_config, generate_basic_configuration(storage_df, energy_reserve))
-    uc_ = construct_unit_commitment(
+    uc = construct_unit_commitment(
         gen_df_;
         scenarios = nothing,
         config...
@@ -286,8 +286,8 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         gen_df, loads_df, gen_variable_df = pre_process_load_gen_variable(gen_df_, loads_df, gen_variable_df)
         μ_up, μ_dn = pre_process_μ(μ_config.value.up, μ_config.value.down)
         
-        uc = copy(uc_)
-        initialize_model(uc, config[:mip_gap])
+        # uc = copy(uc_)
+        # initialize_model(uc, config[:mip_gap])
         update_daily_data(uc, loads_df, gen_variable_df, storage_df, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
         optimize!(uc)
         s_uc[(day,μ_config.key)] = get_model_solution(
@@ -313,7 +313,6 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         ed = construct_economic_dispatch(gen_df; config...)
         update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; config...)
         update_SOE_restrictions(ed, envelope_variables, config[:constrain_SOE_by_envelopes])
-
         s_ed[(day,μ_config.key)] = launch_monte_carlo_get_solution(
             ed,
             gen_df,

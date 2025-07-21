@@ -16,10 +16,10 @@ function initialize_model(model, mip_gap)
 end
 
 
-function DUC(gen_df)
+function DUC(gen_df, mip_gap)
     model = Model()
     # model = direct_model(Gurobi.Optimizer())
-    # initialize_model(model, mip_gap)
+    initialize_model(model, mip_gap)
     sets = get_sets(gen_df)
     G = sets.G
     G_thermal = sets.G_thermal

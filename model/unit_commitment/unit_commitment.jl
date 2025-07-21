@@ -17,7 +17,7 @@ function construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_
     naive_envelopes = get(kwargs, :naive_envelopes, false)
     sets =  get_sets(gen_df)
 
-    uc = DUC(gen_df)
+    uc = DUC(gen_df, mip_gap)
     if !isnothing(storage)
         println("Adding storage...")
         add_storage(uc, storage, sets)
