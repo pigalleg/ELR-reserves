@@ -238,16 +238,17 @@ function constrain_decision_variables(model, reserve_variables, variables_to_con
     if constrain_dispatch # assumes either ERESUP or RESUP exists
         constrain_dispatch_variables_according_to_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; reserve_variables...)
     end
-    constraint_dispatch_variables_with_no_reserve(bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; reserve_variables...) # By default, units not offering reserve will have their dispatch fixed.
+    constraint_dispatch_variables_with_no_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; reserve_variables...) # By default, units not offering reserve will have their dispatch fixed.
 end
 
-function constraint_dispatch_variables_with_no_reserve(bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; kwargs...)
+function constraint_dispatch_variables_with_no_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; kwargs...)
     function fix_variables_to_value(var, var_value, res_vars, constrain_by_energy)
         G = [constrain_by_energy ? [g for (g,j,t) in eachindex(res_var)] : axes(res_var)[1] for res_var in res_vars] # We take the set of assets that have reserve or energy reserve (res_vars) procured
         G = reduce(intersect, union(G, [axes(var)[1]])) # We also intersect with the set of assets belonging to var
         G_to_fix = setdiff(axes(var)[1], G)
+        model_var = model[get_variable_base_name(var)]
         for key in collect(keys(var)) if key.I[1] in G_to_fix
-                fix(var[key], var_value[key], force = true) # force is needed because the variable has bounds defined.
+                fix(model_var[key], var_value[key], force = true) # force is needed because the variable has bounds defined.
             end
         end
     end
@@ -279,9 +280,9 @@ end
 function constrain_dispatch_variables_according_to_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; kwargs...)
     # Dispatch constrained based on the procured reserve or energy reserve at the UC stage
     # Function fixes up to three variable types: :GEN, :CH and :DIS
-    # If Constrain_by_energy= true, integral of redispatch within [j,t] needs to be within the energy reserve. Otherwise, constraints are pointwise.
+    # If Constrain_by_energy= true, integral of redispatch in [j,t] is constrained by the respective  energy reserve term. Otherwise, constraints are pointwise.
 
-    function constrain_production_variables(var, var_value, res_up_var, res_up_var_value, constrain_by_energy; lower_bound = false)
+    function constrain_production_variables(model, var, var_value, res_up_var, res_up_var_value, constrain_by_energy; lower_bound = false)
         # This same function is used to constraints :GEN, :CH and :DIS variables 
         # G = intersect(axes(res_up_var)[1], axes(var)[1])
         # T = intersect(axes(res_up_var)[2], axes(var)[2])
@@ -291,10 +292,11 @@ function constrain_dispatch_variables_according_to_reserve(model, bidirectional_
         # model[name] = @constraint(model, [s in G, t in T], 
         #     c*var[s,t] <= c*var_value[s,t] + res_up_var_value[s,t]
         #     )
+        model_var = model[get_variable_base_name(var)]
         if !constrain_by_energy
             G = intersect(axes(res_up_var)[1], axes(var)[1])
             model[name] = @constraint(model, [g in G, t in T], 
-                c*var[g,t] <= c*var_value[g,t] + res_up_var_value[g,t]
+                c*model_var[g,t] <= c*var_value[g,t] + res_up_var_value[g,t]
             )
             for g in G, t in T # important to identify constraints for debugging
                 set_name(model[name][g,t], string(name)*"[$g,$t]")
@@ -303,7 +305,7 @@ function constrain_dispatch_variables_according_to_reserve(model, bidirectional_
             G = [g for (g,j,t) in eachindex(res_up_var)]
             G = intersect(G, axes(var)[1])
             model[name] = @constraint(model,[g in G, j in T, t in T; j <= t],
-                sum(c*(var[g,tt] - var_value[g,tt]) for tt in T if (tt >= j)&(tt <= t)) <= + res_up_var_value[g,j,t]
+                sum(c*(model_var[g,tt] - var_value[g,tt]) for tt in T if (tt >= j)&(tt <= t)) <= + res_up_var_value[g,j,t]
             )
             for g in G, j in T, t in T if j<=t # important to identify constraints for debugging
                     set_name(model[name][g,j,t], string(name)*"[$g,$j,$t")
@@ -329,21 +331,21 @@ function constrain_dispatch_variables_according_to_reserve(model, bidirectional_
         if get_variable_base_name(var) in gen_logic_group
             # constrain_production_variables(var, var_value, kwargs[:res_up_var], kwargs[:res_up_var_value], kwargs[:res_dn_var], kwargs[:res_dn_var_value])
             # name_up = Symbol("$(string(get_variable_base_name(var)))$(string(get_variable_base_name(res_up_var)))")
-            constrain_production_variables(var, var_value, kwargs[:res_up_var], kwargs[:res_up_var_value], constrain_by_energy)
-            constrain_production_variables(var, var_value, kwargs[:res_dn_var], kwargs[:res_dn_var_value], constrain_by_energy, lower_bound = true)
+            constrain_production_variables(model, var, var_value, kwargs[:res_up_var], kwargs[:res_up_var_value], constrain_by_energy)
+            constrain_production_variables(model, var, var_value, kwargs[:res_dn_var], kwargs[:res_dn_var_value], constrain_by_energy, lower_bound = true)
         elseif get_variable_base_name(var) in dis_logic_group
-            # constrain_production_variables(var, var_value, kwargs[:res_up_dis_var], kwargs[:res_up_dis_var_value], kwargs[:res_dn_dis_var], kwargs[:res_dn_dis_var_value])
-            constrain_production_variables(var, var_value, kwargs[:res_up_dis_var], kwargs[:res_up_dis_var_value], constrain_by_energy)
-            constrain_production_variables(var, var_value, kwargs[:res_dn_dis_var], kwargs[:res_dn_dis_var_value], constrain_by_energy, lower_bound = true)
+            # constrain_production_variables(model, var, var_value, kwargs[:res_up_dis_var], kwargs[:res_up_dis_var_value], kwargs[:res_dn_dis_var], kwargs[:res_dn_dis_var_value])
+            constrain_production_variables(model, var, var_value, kwargs[:res_up_dis_var], kwargs[:res_up_dis_var_value], constrain_by_energy)
+            constrain_production_variables(model, var, var_value, kwargs[:res_dn_dis_var], kwargs[:res_dn_dis_var_value], constrain_by_energy, lower_bound = true)
         elseif get_variable_base_name(var) in ch_logic_group
-            # constrain_production_variables(var, var_value, kwargs[:res_dn_ch_var], kwargs[:res_dn_ch_var_value], kwargs[:res_up_ch_var], kwargs[:res_up_ch_var_value])
-            constrain_production_variables(var, var_value, kwargs[:res_dn_ch_var], kwargs[:res_dn_ch_var_value], constrain_by_energy)
-            constrain_production_variables(var, var_value, kwargs[:res_up_ch_var], kwargs[:res_up_ch_var_value], constrain_by_energy, lower_bound = true)
+            # constrain_production_variables(model, var, var_value, kwargs[:res_dn_ch_var], kwargs[:res_dn_ch_var_value], kwargs[:res_up_ch_var], kwargs[:res_up_ch_var_value])
+            constrain_production_variables(model, var, var_value, kwargs[:res_dn_ch_var], kwargs[:res_dn_ch_var_value], constrain_by_energy)
+            constrain_production_variables(model, var, var_value, kwargs[:res_up_ch_var], kwargs[:res_up_ch_var_value], constrain_by_energy, lower_bound = true)
 
         elseif get_variable_base_name(var) in ch_logic_group_2
-            # constrain_production_variables(var, var_value, kwargs[:res_dn_var], kwargs[:res_dn_var_value], kwargs[:res_up_var], kwargs[:res_up_var_value])
-            constrain_production_variables(var, var_value, kwargs[:res_dn_var], kwargs[:res_dn_var_value], constrain_by_energy)
-            constrain_production_variables(var, var_value, kwargs[:res_up_var], kwargs[:res_up_var_value], constrain_by_energy, lower_bound = true)
+            # constrain_production_variables(model, var, var_value, kwargs[:res_dn_var], kwargs[:res_dn_var_value], kwargs[:res_up_var], kwargs[:res_up_var_value])
+            constrain_production_variables(model, var, var_value, kwargs[:res_dn_var], kwargs[:res_dn_var_value], constrain_by_energy)
+            constrain_production_variables(model, var, var_value, kwargs[:res_up_var], kwargs[:res_up_var_value], constrain_by_energy, lower_bound = true)
         end
     end
 end
