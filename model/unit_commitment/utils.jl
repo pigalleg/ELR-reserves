@@ -1,14 +1,19 @@
 include("./config.jl")
+using JuMP.Containers: DenseAxisArray, SparseAxisArray
 
-function convert_to_matrix(gen_variable, row_key, column_key, value_key)
-    return  Matrix(unstack(gen_variable, row_key, column_key, value_key)[:,Not(row_key)])
+function convert_to_matrix(df, row_key, column_key, value_key)
+    return  Matrix(unstack(df, row_key, column_key, value_key)[:,Not(row_key)])
 end
 
-function update_parameter_value(model, key, value)
+function update_parameter_value(model, key, value::Union{Matrix, Vector, DenseAxisArray, SparseAxisArray})
   # Updates the value of a parameter in the model
+  # model[key]: DenseAxisArray => value: vector or DenseAxisArray
+  # model[key]: SparseAxisArray => value: Matrix or SparseAxisArray
   println("$key")
+  # when model[key] is DenseAxisArray, then idx is cartesian but if it is SparseAxisArray, then idx is a tuple. We need to convert to cartesian if Matrix
+  convert_index(idx) = (value isa Matrix) ? CartesianIndex(idx) : idx 
   for idx in eachindex(model[key])
-    set_parameter_value(model[key][idx], value[CartesianIndex(idx)]) # when model[key] is DenseAxisArray, then idx is cartesian but if it is SparseAxisArray, then idx is a tuple 
+    set_parameter_value(model[key][idx], value[convert_index(idx)]) 
   end
   end
 

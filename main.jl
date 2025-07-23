@@ -312,7 +312,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
 
         ed = construct_economic_dispatch(gen_df; config...)
         update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; config...)
-        update_SOE_restrictions(ed, envelope_variables, config[:constrain_SOE_by_envelopes])
+        update_envelope_parameters(ed, envelope_variables, config[:energy_reserve])
         s_ed[(day,μ_config.key)] = launch_monte_carlo_get_solution(
             ed,
             gen_df,

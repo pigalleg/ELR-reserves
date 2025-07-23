@@ -10,6 +10,7 @@ function initialize_model(model, mip_gap)
     set_optimizer_attribute(model, "MIPGap", mip_gap)
     # set_optimizer_attribute(model, "LogFile", "./output/log_file.txt")
     # set_optimizer_attribute(model, "mip_rel_gap", mip_gap)
+    # set_optimizer_attribute(ed, "TimeLimit", 60.0)
     set_optimizer_attribute(model, "OutputFlag", 0)
     @variable(model, FeasibilityTol in Parameter(get_optimizer_attribute(model, "FeasibilityTol")))
     @variable(model, MIPGap in Parameter(mip_gap))
@@ -567,7 +568,7 @@ end
 
 function set_envelope_multipliers(model, μ_up, μ_dn, storage)
     # SOEUP[s,t]  == SOEUP[s,t-1] + (CH[s,t] + p_μ_DN[t]*RESDNCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] - p_μ_DN[t]*RESDNDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
-    #SOEDN[s,t]  == SOEDN[s,t-1] + (CH[s,t] - p_μ_UP[t]*RESUPCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] + p_μ_UP[t]*RESUPDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
+    # SOEDN[s,t]  == SOEDN[s,t-1] + (CH[s,t] - p_μ_UP[t]*RESUPCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] + p_μ_UP[t]*RESUPDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
     println("μ_up")
     println("μ_dn")
     SOEUpEvol = model[:SOEUpEvol]
