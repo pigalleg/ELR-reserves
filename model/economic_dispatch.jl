@@ -66,11 +66,18 @@ function construct_economic_dispatch(gen_df; kwargs... )
     sets =  get_sets(gen_df)
     extra_OV = get(kwargs, :extra_OV, 0)
     mip_gap = get(kwargs, :mip_gap, 1e-8)
-
+    energy_reserve = get(kwargs, :energy_reserve, false)
+    constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
+    println("Constructing ED...")
     ed = ED(gen_df, VLOL, VLGEN, mip_gap, extra_OV)
     if !isnothing(storage)
         println("Adding storage...")
         add_storage(ed, storage, sets, true)
+        add_envelope_parameters(ed) # needs to be declared before constraint_SOE_final_to_envelopes and constrain_SOE_to_envelopes
+        constraint_SOE_final_to_envelopes(ed)
+        if constrain_SOE_by_envelopes
+            constrain_SOE_to_envelopes(ed)
+        end
     end
     if ramp_constraints
         println("Adding ramp constraints...")   
@@ -216,11 +223,23 @@ function update_dispatch_restrictions(ed, reserve_variables, variables_to_constr
     fix_decision_variables(ed, variables_to_fix, remove_variables_from_objective)
 end
 
-function update_SOE_restrictions(ed, envelope_variables, constrain_SOE_by_envelopes)
-    constraint_SOE_final_to_envelopes(ed, envelope_variables)
-    if constrain_SOE_by_envelopes
-        constrain_SOE_to_envelopes(ed, envelope_variables)
-    end
+function update_envelope_parameters(model, envelope_variables, energy_envelope)
+    remove_variable_constraint(model, :SOEFinal)
+    if !energy_envelope
+        p_SOEUP = envelope_variables[1][2]
+        p_SOEDN = envelope_variables[2][2]
+    else
+        # For energy reserves, we reduce the dimension of the envelopes ESOEUP (envelope_variables[1][2]) and ESOEDN (envelope_variables[2][2]) in oneby taking max(ESOEUP[s,:,t]) and min(ESOEDN[s,:,t]). This operation is not supported natively by DenseAxisArray, so we convert to DataFrame and then a Matrix
+        p_SOEUP = transform(value_to_df_(envelope_variables[1][2]))
+        p_SOEUP = combine(groupby(p_SOEUP,[:r_id,:hour]), :value => maximum, renamecols = false) # maximum value for each r_id and hour
+        p_SOEUP = convert_to_matrix(p_SOEUP, :r_id, :hour, :value) # convert to matrix
+        
+        p_SOEDN = transform(value_to_df_(envelope_variables[2][2]))
+        p_SOEDN = combine(groupby(p_SOEDN,[:r_id,:hour]), :value => minimum, renamecols = false)
+        p_SOEDN = convert_to_matrix(p_SOEDN, :r_id, :hour, :value)
+    end    
+    update_parameter_value(model, :p_SOEUP, p_SOEUP)
+    update_parameter_value(model, :p_SOEDN, p_SOEDN)
 end
 
 function constrain_decision_variables(model, reserve_variables, variables_to_constrain, constrain_dispatch, constrain_by_energy, bidirectional_storage_reserve)
@@ -351,58 +370,68 @@ function constrain_dispatch_variables_according_to_reserve(model, bidirectional_
 end
 
 
-function constrain_SOE_to_envelopes(model, envelope_variables)
-    println("Constraining SOE...")
+function add_envelope_parameters(model, energy_reserve = false)
+    println("Adding envelope parameters...")
     SOE = model[:SOE]
     S = axes(SOE)[1]
     T_incr = axes(SOE)[2]
 
-    E_SOEUP_value = envelope_variables[1][2]
-    E_SOEDN_value = envelope_variables[2][2]
+    if !energy_reserve
+        @variable(model, p_SOEUP[s in S, t in T_incr] in Parameter(0.0)) 
+        @variable(model, p_SOEDN[s in S, t in T_incr] in Parameter(0.0))
+    else
+        @variable(model, p_SOEUP[s in S, j in T_incr, t in T_incr; j <= t] in Parameter(0.0)) 
+        @variable(model, p_SOEDN[s in S, j in T_incr, t in T_incr; j <= t] in Parameter(0.0))
+    end
+end
 
-    if get_variable_base_name(first(first(envelope_variables))) == :SOEUP
+function constrain_SOE_to_envelopes(model, energy_reserve = false)
+    println("Constraining SOE...")
+    SOE = model[:SOE]
+    S = axes(SOE)[1]
+    T_incr = axes(SOE)[2]
+    p_SOEUP = model[:p_SOEUP]
+    p_SOEDN = model[:p_SOEDN]
+    if !energy_reserve
         @constraint(model, SOEEnvelopeUP[s in S, t in T_incr],
-            SOE[s,t] <= E_SOEUP_value[s,t]
+            SOE[s,t] <= p_SOEUP[s,t]
         )
         @constraint(model, SOEEnvelopeDN[s in S, t in T_incr],
-            SOE[s,t] >= E_SOEDN_value[s,t]
+            SOE[s,t] >= p_SOEDN[s,t]
         )
     else
         @constraint(model, SOEEnvelopeUP[s in S, t in T_incr],
-            SOE[s,t] <= maximum(E_SOEUP_value[s,:,t]) # SOE[s,t] <= E_SOEUP_value[s,j,t]
+            SOE[s,t] <= maximum(p_SOEUP[s,:,t]) # SOE[s,t] <= E_SOEUP_value[s,j,t]
         )
         @constraint(model, SOEEnvelopeDN[s in S, t in T_incr],
-            SOE[s,t] >= minimum(E_SOEDN_value[s,:,t]) # SOE[s,t] >= E_SOEDN_value[s,j,t]
+            SOE[s,t] >= minimum(p_SOEDN[s,:,t]) # SOE[s,t] >= E_SOEDN_value[s,j,t]
         )
     end 
 end
 
-function constraint_SOE_final_to_envelopes(model, envelope_variables)
+function constraint_SOE_final_to_envelopes(model, energy_reserve = false)
     # It assumes envelopes have been calculated by this stage
     # Must be called after SOE final restrictions are imposed
     println("Constraining SOE final to envelopes...")
     SOE = model[:SOE]
     S = axes(SOE)[1]
-    T =  axes(model[:SupplyDemandBalance])[1]
-    remove_variable_constraint(model, :SOEFinal)
-
-    E_SOEUP_value = envelope_variables[1][2]
-    E_SOEDN_value = envelope_variables[2][2]
-
-    if get_variable_base_name(first(first(envelope_variables))) == :SOEUP
+    T_incr = axes(SOE)[2]
+    p_SOEUP = model[:p_SOEUP]
+    p_SOEDN = model[:p_SOEDN]
+    if !energy_reserve
         @constraint(model, SOEFinalUp[s in S],
-            SOE[s,T[end]] <= E_SOEUP_value[s,T[end]]
+            SOE[s,T_incr[end]] <= p_SOEUP[s,T_incr[end]]
         )
         @constraint(model, SOEFinalDn[s in S],
-            SOE[s,T[end]] >= E_SOEDN_value[s,T[end]]
+            SOE[s,T_incr[end]] >= p_SOEDN[s,T_incr[end]]
         )
     else
         @constraint(model, SOEFinalUp[s in S],
-            SOE[s,T[end]] <= maximum(E_SOEUP_value[s,:,T[end]])
+            SOE[s,T_incr[end]] <= max(p_SOEUP[s,:,T_incr[end]]...)
         )
-        @constraint(model, SOEFinalDn[s in S],
-            SOE[s,T[end]] >= minimum(E_SOEDN_value[s,:,T[end]])
-        )
+        # @constraint(model, SOEFinalDn[s in S],
+        #     SOE[s,T_incr[end]] >= min(p_SOEDN[s,:,T_incr[end]]...)
+        # )
     end
 end
 
