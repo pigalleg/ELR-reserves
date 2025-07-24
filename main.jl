@@ -231,9 +231,10 @@ function generate_ed_solutions(;days, kwargs...)
 
     folders = get(kwargs, :folders, [(get(kwargs, :input_folder, G_input_folder), get(kwargs, :output_folder, "./output"))])
     for (input_folder, output_folder) in folders
-        for day in days
-            generate_ed_solutions_([day], input_folder, output_folder, generate_μ_configurations(get(kwargs, :μs, nothing)); kwargs...)
-        end
+        # for day in days
+        #     generate_ed_solutions_([day], input_folder, output_folder, generate_μ_configurations(get(kwargs, :μs, nothing)); kwargs...)
+        # end
+        generate_ed_solutions_(days, input_folder, output_folder, generate_μ_configurations(get(kwargs, :μs, nothing)); kwargs...)
         generate_post_processing_KPI_files(output_folder, stochastic = false)
     end
 end
@@ -268,24 +269,24 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
     s_ed = Dict()
 
     
-    gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve, required_energy_reserve = generate_deterministic_input_data(input_folder)
+    gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve_, required_energy_reserve_ = generate_deterministic_input_data(input_folder)
     config = merge(add_to_config, generate_basic_configuration(storage_df, energy_reserve))
     uc = construct_unit_commitment(
         gen_df_;
         scenarios = nothing,
         config...
     )
-    # ed = construct_economic_dispatch()
+    ed = construct_economic_dispatch(gen_df_; config...)
     for day in days, μ_config in μ_configurations
-        
+        # (day, μ_config) in Iterators.product(days, μ_configurations)
+        println("Processing day $(day) with configuration $(μ_config.key)...")
         loads_df = filter_day(day, loads_df_)
         gen_variable_df = filter_day(day, gen_variable_df_)
         random_loads_df = filter_day(day, random_loads_df_)
-        required_reserve = filter_day(day, required_reserve)
-        required_energy_reserve = filter_day(day, required_energy_reserve)
+        required_reserve = filter_day(day, required_reserve_)
+        required_energy_reserve = filter_day(day, required_energy_reserve_)
         gen_df, loads_df, gen_variable_df = pre_process_load_gen_variable(gen_df_, loads_df, gen_variable_df)
         μ_up, μ_dn = pre_process_μ(μ_config.value.up, μ_config.value.down)
-        
         # uc = copy(uc_)
         # initialize_model(uc, config[:mip_gap])
         update_daily_data(uc, loads_df, gen_variable_df, storage_df, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
@@ -297,20 +298,16 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
             loads = loads_df,
             config...
         )
-        # reserve_variables = get_reserves_variables(uc)/
-        
-        reserve_variables = get_reserves_variables(uc) # values extraction
+        reserve_variables = get_reserves_variables(uc) 
         envelope_variables = get_envelope_variables(uc)
-        variables_to_fix = get_variables_to_fix(uc) # values extraction
-        variables_to_constrain = get_variables_to_constrain(uc; config...) # values extraction
+        variables_to_fix = get_variables_to_fix(uc) 
+        variables_to_constrain = get_variables_to_constrain(uc; config...) 
 
         if haskey(uc, :ReservePenalizationCost)
             config[:extra_OV] = value(uc[:ReservePenalizationCost])
         elseif haskey(uc, :EnergyReservePenalizationCost)
             config[:extra_OV] = value(uc[:EnergyReservePenalizationCost])
         end
-
-        ed = construct_economic_dispatch(gen_df; config...)
         update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; config...)
         update_envelope_parameters(ed, envelope_variables, config[:energy_reserve])
         s_ed[(day,μ_config.key)] = launch_monte_carlo_get_solution(

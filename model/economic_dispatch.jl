@@ -66,11 +66,10 @@ function construct_economic_dispatch(gen_df; kwargs... )
     mip_gap = get(kwargs, :mip_gap, 1e-8)
     energy_reserve = get(kwargs, :energy_reserve, false)
     constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
-    println("Constructing ED...")
     ed = ED(gen_df, VLOL, VLGEN, mip_gap, extra_OV)
     if !isnothing(storage)
         println("Adding storage...")
-        add_storage(ed, storage, sets, true)
+        add_storage(ed, storage, sets, SOE_final = true)
         add_envelope_parameters(ed) # needs to be declared before constraint_SOE_final_to_envelopes and constrain_SOE_to_envelopes
         constraint_SOE_final_to_envelopes(ed)
         if constrain_SOE_by_envelopes
@@ -296,6 +295,7 @@ function constraint_dispatch_variables_with_no_reserve(model, bidirectional_stor
 end
 
 function constrain_dispatch_variables_according_to_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; kwargs...)
+    #TODO: declare following constraints during the ED construction and update them through parameters instead of redefining them at each loop.
     # Dispatch constrained based on the procured reserve or energy reserve at the UC stage
     # Function fixes up to three variable types: :GEN, :CH and :DIS
     # If Constrain_by_energy= true, integral of redispatch in [j,t] is constrained by the respective energy reserve term. Otherwise, constraints are pointwise.
@@ -305,16 +305,17 @@ function constrain_dispatch_variables_according_to_reserve(model, bidirectional_
         T = axes(var_value)[2]
         name = Symbol("$(string(var_name))$(string(res_up_var_name))")
         c = !lower_bound ? 1 : -1
-        # model[name] = @constraint(model, [s in G, t in T], 
-        #     c*var[s,t] <= c*var_value[s,t] + res_up_var_value[s,t]
-        #     )
         model_var = model[var_name]
+        # if haskey(mode, name)
+        #     println("Constraint $name already exists....")
+        # #     remove_variable_constraint(model, name, true) # remove previous constraint if exists
+        # end
         if !constrain_by_energy
             G = intersect(axes(res_up_var_value)[1], axes(var_value)[1])
             model[name] = @constraint(model, [g in G, t in T], 
                 c*model_var[g,t] <= c*var_value[g,t] + res_up_var_value[g,t]
             )
-            for g in G, t in T # important to identify constraints for debugging
+            for g in G, t in T # important to identify constraints for deletion at each loop
                 set_name(model[name][g,t], string(name)*"[$g,$t]")
             end
         else
@@ -323,12 +324,11 @@ function constrain_dispatch_variables_according_to_reserve(model, bidirectional_
             model[name] = @constraint(model,[g in G, j in T, t in T; j <= t],
                 sum(c*(model_var[g,tt] - var_value[g,tt]) for tt in T if (tt >= j)&(tt <= t)) <= + res_up_var_value[g,j,t]
             )
-            for g in G, j in T, t in T if j<=t # important to identify constraints for debugging
+            for g in G, j in T, t in T if j<=t # important to identify constraints for deleting at each loop
                     set_name(model[name][g,j,t], string(name)*"[$g,$j,$t")
                 end
             end
         end
-    
     end
 
     println("Constraining dispatch to procured reserve...")
