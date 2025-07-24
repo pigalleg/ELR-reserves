@@ -62,14 +62,14 @@ function construct_economic_dispatch(gen_df; kwargs... )
     storage = get(kwargs, :storage, nothing)
     ramp_constraints = get(kwargs, :ramp_constraints, true)
     sets =  get_sets(gen_df)
-    extra_OV = get(kwargs, :extra_OV, 0)
+    # extra_OV = get(kwargs, :extra_OV, 0)
     mip_gap = get(kwargs, :mip_gap, 1e-8)
     energy_reserve = get(kwargs, :energy_reserve, false)
     constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
-    ed = ED(gen_df, VLOL, VLGEN, mip_gap, extra_OV)
+    ed = ED(gen_df, VLOL, VLGEN, mip_gap)
     if !isnothing(storage)
         println("Adding storage...")
-        add_storage(ed, storage, sets, SOE_final = true)
+        add_storage(ed, storage, sets, SOE_final = false)
         add_envelope_parameters(ed) # needs to be declared before constraint_SOE_final_to_envelopes and constrain_SOE_to_envelopes
         constraint_SOE_final_to_envelopes(ed)
         if constrain_SOE_by_envelopes
@@ -85,7 +85,7 @@ function construct_economic_dispatch(gen_df; kwargs... )
 end
 
 
-function ED(gen_df, VLOL, VLGEN, mip_gap, extra_OV)
+function ED(gen_df, VLOL, VLGEN, mip_gap)
     println("Constructing ED...")
     # Outputs EC by fixing variables of UC
     ed = Model()
@@ -102,7 +102,7 @@ function ED(gen_df, VLOL, VLGEN, mip_gap, extra_OV)
 
     VLOL = convert_to_indexed_vector(VLOL, T)
     VLGEN = convert_to_indexed_vector(VLGEN, T)
-
+    @variable(ed, extra_OV in Parameter(0))
     # ed = uc # pointer, uc object will change
     
     # set_optimizer_attribute(ed, "TimeLimit", 60.0)    # 60 seconds
