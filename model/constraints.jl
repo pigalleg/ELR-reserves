@@ -69,7 +69,7 @@ function add_ramp_constraints(model, gen_df, sets)
 end
 
 
-function add_storage(model, storage, sets, set_ov = true)
+function add_storage(model, storage, sets; SOE_final = true)
     T = sets.T 
     T_incr = copy(T)
     pushfirst!(T_incr, T_incr[1]-1) # T_incr = [t[1]-1,T]
@@ -92,13 +92,13 @@ function add_storage(model, storage, sets, set_ov = true)
     )
 
     @objective(model, Min,
-        objective_function(model) + model[:StorageOperationalCost]
+        objective_function(model) + StorageOperationalCost
     )
 
     OPEX = model[:OPEX]
     remove_variable_constraint(model, :OPEX, false)
     @expression(model, OPEX,
-        OPEX + model[:StorageOperationalCost]
+        OPEX + StorageOperationalCost
     )
 
     # Redefinition of supply-demand balance expression and constraint
@@ -146,7 +146,9 @@ function add_storage(model, storage, sets, set_ov = true)
     @constraint(model, SOEO[s in S], #TODO: replace by T
         SOE[s,T_incr[1]] == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
     )
-    @constraint(model, SOEFinal[s in S],
-        SOE[s,T[end]] == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
-    )
+    if SOE_final
+        @constraint(model, SOEFinal[s in S],
+            SOE[s,T[end]] == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
+        )
+    end
 end
