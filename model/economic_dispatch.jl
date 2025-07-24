@@ -221,7 +221,6 @@ function update_dispatch_restrictions(ed, reserve_variables, variables_to_constr
 end
 
 function update_envelope_parameters(model, envelope_variables, energy_envelope)
-    remove_variable_constraint(model, :SOEFinal)
     if !energy_envelope
         p_SOEUP = envelope_variables[1][2]
         p_SOEDN = envelope_variables[2][2]
@@ -306,10 +305,10 @@ function constrain_dispatch_variables_according_to_reserve(model, bidirectional_
         name = Symbol("$(string(var_name))$(string(res_up_var_name))")
         c = !lower_bound ? 1 : -1
         model_var = model[var_name]
-        # if haskey(mode, name)
-        #     println("Constraint $name already exists....")
-        # #     remove_variable_constraint(model, name, true) # remove previous constraint if exists
-        # end
+        if haskey(model, name)
+            println("Constraint $name already exists....")
+            remove_variable_constraint(model, name, true) # remove previous constraint if exists
+        end
         if !constrain_by_energy
             G = intersect(axes(res_up_var_value)[1], axes(var_value)[1])
             model[name] = @constraint(model, [g in G, t in T], 
