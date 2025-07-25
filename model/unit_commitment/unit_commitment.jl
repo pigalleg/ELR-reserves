@@ -1,23 +1,26 @@
 using DataFrames
 include("./deterministic.jl")
 include("./stochastic.jl")
+include("./config.jl")
 
 function construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_constraints; kwargs...)
     println("Constructing DUC...")
-    reserve = get(kwargs, :reserve, false)
-    energy_reserve = get(kwargs, :energy_reserve, false)
-    storage_envelopes = get(kwargs, :storage_envelopes, true)
-    storage_link_constraint =  get(kwargs, :storage_link_constraint, false)
-    storage_reserve_repartition =  get(kwargs, :storage_reserve_repartition, -1) # -1 means no repartitioning, 0 means no reserve for storage, and any other positive number is the percentage of the reserve that should be allocated to storage
-    VRESERVE = get(kwargs, :VRESERVE, 1e-6)
-    VSRESUP = get(kwargs, :VSRESUP, 1e+4)
-    VSRESDN = get(kwargs, :VSRESDN, 30)
-    bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
-    thermal_reserve = get(kwargs, :thermal_reserve, false)
-    naive_envelopes = get(kwargs, :naive_envelopes, false)
+    reserve = get(kwargs, :reserve, g_reserve)
+    energy_reserve = get(kwargs, :energy_reserve, g_energy_reserve)
+    storage_envelopes = get(kwargs, :storage_envelopes, g_storage_envelopes)
+    storage_link_constraint =  get(kwargs, :storage_link_constraint, g_storage_link_constraint)
+    storage_reserve_repartition =  get(kwargs, :storage_reserve_repartition, g_storage_reserve_repartition) 
+    VRESERVE = get(kwargs, :VRESERVE, g_VRESERVE)
+    VSRESUP = get(kwargs, :VSRESUP, g_VSRESUP)
+    VSRESDN = get(kwargs, :VSRESDN, g_VRESDN)
+    bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, g_bidirectional_storage_reserve)
+    thermal_reserve = get(kwargs, :thermal_reserve, g_thermal_reserve)
+    naive_envelopes = get(kwargs, :naive_envelopes, g_naive_envelopes)
+
     sets =  get_sets(gen_df)
 
     uc = DUC(gen_df, mip_gap)
+    
     if !isnothing(storage)
         println("Adding storage...")
         add_storage(uc, storage, sets)
@@ -70,35 +73,18 @@ function update_daily_data(model, loads, gen_variable, storage, μ_up, μ_dn, re
         update_parameter_value(model, :RERESUP, convert_to_matrix(required_energy_reserve, :i_hour, :t_hour, :reserve_up_MW))
         update_parameter_value(model, :RERESDN, convert_to_matrix(required_energy_reserve, :i_hour, :t_hour, :reserve_down_MW))
     end
-    # if !isnothing(energy_reserve) &&  isnothing(reserve)
-    #     update_energy_reserve(model, energy_reserve)
-    # end
     println("...done")
     return model
 end 
 
 
-# function construct_unit_commitment_(gen_df; scenarios, kwargs...)
-#     storage = get(kwargs, :storage, nothing)
-#     ramp_constraints = get(kwargs, :ramp_constraints, true)
-#     mip_gap = get(kwargs, :mip_gap, 1e-8)
-#     expected_min_SOE = get(kwargs, :expected_min_SOE, false) # SUC
-#     VLOL = get(kwargs, :VLOL, 1e4) # SUC
-#     VLGEN = get(kwargs, :VLGEN, 0) # SUC
-#     if isnothing(scenarios)
-#         return construct_deterministic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints; kwargs...)
-#     else
-#         return construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, storage, ramp_constraints, scenarios, expected_min_SOE, VLOL, VLGEN)
-#     end
-# end
-
 function construct_unit_commitment(gen_df; scenarios, kwargs...)
-    storage = get(kwargs, :storage, nothing)
-    ramp_constraints = get(kwargs, :ramp_constraints, true)
-    mip_gap = get(kwargs, :mip_gap, 1e-8)
-    expected_min_SOE = get(kwargs, :expected_min_SOE, false)
-    VLOL = get(kwargs, :VLOL, 1e4)  
-    VLGEN = get(kwargs, :VLGEN, 0)
+    storage = get(kwargs, :storage, g_storage)
+    ramp_constraints = get(kwargs, :ramp_constraints, g_ramp_constraints)
+    mip_gap = get(kwargs, :mip_gap, g_mip_gap)
+    expected_min_SOE = get(kwargs, :expected_min_SOE, g_expected_min_SOE)
+    VLOL = get(kwargs, :VLOL, g_VLOL)
+    VLGEN = get(kwargs, :VLGEN, g_VLGEN)
     if isnothing(scenarios)
         return construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_constraints; kwargs...)
     else
@@ -106,15 +92,4 @@ function construct_unit_commitment(gen_df; scenarios, kwargs...)
     end
 end
 
-# function solve_unit_commitment(gen_df, loads, gen_variable, scenarios = nothing; kwargs...)
-#     uc = construct_unit_commitment(gen_df, loads, gen_variable, scenarios; kwargs...)
-#     # relax_integrality(uc)
-#     optimize!(uc)
-#     if !is_solved_and_feasible(uc)
-#         include("./debugging_ignore.jl")
-#         @infiltrate   
-#         # list = get_conflicting_constraints(uc)
-#     end   
-#     return uc
-# end
 

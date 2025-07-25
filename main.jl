@@ -6,7 +6,7 @@ include("./model/unit_commitment/unit_commitment.jl")
 include("./model/economic_dispatch.jl")
 include("./notebooks/plotting.jl")
 include("./notebooks/processing.jl")
-
+include("./model/unit_commitment/config.jl")
 # __revise_mode__ = :eval
 # ENV["COLUMNS"]=120 # Set so all columns of DataFrames and Matrices are displayed
 function plot_results(solution, required_reserve)
@@ -241,28 +241,12 @@ end
 
 function generate_ed_solutions_(days, input_folder, output_folder, μ_configurations; kwargs...)
     write = get(kwargs, :write, true)
-    reserve = get(kwargs, :reserve, 0.1)
-    ε = get(kwargs, :ε, 0.025)
-    ρ = get(kwargs, :ρ, 0)
-    energy_reserve = get(kwargs, :energy_reserve, false)
-    # μs =  get(kwargs, :μs, nothing)
+    energy_reserve = get(kwargs, :energy_reserve, g_energy_reserve)
+    
     add_to_config = Dict(
-        :max_iterations => get(kwargs, :max_iterations, 100),
-        :constrain_dispatch => get(kwargs, :constrain_dispatch, true),
-        :VRESERVE => get(kwargs, :VRESERVE, 1e-6),
-        # :remove_variables_from_objective => get(kwargs, :remove_variables_from_objective, false),
-        # :VLOL => get(kwargs, :VLOL, 1e4),
-        :mip_gap => get(kwargs, :mip_gap, 1e-8), 
-        :VLGEN => get(kwargs, :VLGEN, 0),
-        :VSRESUP => get(kwargs, :VSRESUP, 1e4),
-        :VSRESDN => get(kwargs, :VSRESDN, 30),
-        :thermal_reserve =>  get(kwargs, :thermal_reserve, false),
-        :bidirectional_storage_reserve => get(kwargs, :bidirectional_storage_reserve, true),
-        :constrain_SOE_by_envelopes => get(kwargs, :constrain_SOE_by_envelopes, false),
-        # :naive_envelopes => get(kwargs, :naive_envelopes, false),
-        :variables_to_constrain => get(kwargs, :variables_to_constrain, [:GEN]),
-        # :storage_reserve_repartition =>  get(kwargs, :storage_reserve_repartition, 1),
-        :get_dual_variables => get(kwargs, :get_dual_variables, false),
+        :max_iterations => get(kwargs, :max_iterations, g_max_iterations),
+        :constrain_dispatch => get(kwargs, :constrain_dispatch, g_constrain_dispatch),
+        :thermal_reserve =>  get(kwargs, :thermal_reserve, g_thermal_reserve),
     )
     # configurations = vcat(configurations, [:base_ramp_storage_energy_reserve_cumulated])
     s_uc = Dict()
@@ -287,8 +271,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         required_energy_reserve = filter_day(day, required_energy_reserve_)
         gen_df, loads_df, gen_variable_df = pre_process_load_gen_variable(gen_df_, loads_df, gen_variable_df)
         μ_up, μ_dn = pre_process_μ(μ_config.value.up, μ_config.value.down)
-        # uc = copy(uc_)
-        # initialize_model(uc, config[:mip_gap])
+
         update_daily_data(uc, loads_df, gen_variable_df, storage_df, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
         optimize!(uc)
         s_uc[(day,μ_config.key)] = get_model_solution(
@@ -338,6 +321,7 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
 end
 
 function generate_suc_solutions(;days, kwargs...)
+    #TODO: connect defau
     function generate_suc_solutions_(day, input_folder, output_folder; kwargs...)
         gen_df, scenarios, gen_variable_df, storage_df = generate_stochastic_input_data(day, input_folder)
         #WARNING: gen_variable_df and gen_df generates a net generation asset that depends on the loads_df. If this load is negative, net generation will have some values different from zero.
@@ -345,8 +329,6 @@ function generate_suc_solutions(;days, kwargs...)
         config = Dict(
             :storage => storage_df,
             :VLGEN => get(kwargs, :VLGEN, 0),
-            :get_dual_variables => get(kwargs, :get_dual_variables, false),
-            :mip_gap => get(kwargs, :mip_gap, 1e-8),
             )
         suc = solve_unit_commitment(
             gen_df,

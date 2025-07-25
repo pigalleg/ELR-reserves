@@ -53,7 +53,7 @@ function create_generators_sets(gen_df)
 end
 
 function create_time_sets()
-  return collect(1:g_HORIZON_LENGTH), collect(1:g_HORIZON_LENGTH-1)
+  return collect(1:g_horizon_length), collect(1:g_horizon_length-1)
 end
 
 function get_sets(gen_df, probability = nothing) #stochastic
@@ -93,5 +93,5 @@ function convert_to_indexed_vector(value, T)
 end
 
 function convert_to_vector(value)
-  return fill(value, g_HORIZON_LENGTH)
+  return fill(value, g_horizon_length)
 end
