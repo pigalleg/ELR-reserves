@@ -1,17 +1,8 @@
 using JuMP
 using Gurobi
 using DataFrames
-# using Revise
+
 include("./unit_commitment/unit_commitment.jl")
-# using .post_processing.jl: get_model_solution
-# include("./post_processing.jl") # get_model_solution
-# using .get_model_solution
-# include("../debugging_ignore.jl")
-# __revise_mode__ = :eval
-COMMIT, START, SHUT, LOL_, RESUP, RESDN, SOEUP, SOEDN, ERESUP, ERESDN, HOUR, GEN, CH, DIS, ResUpRequirement, ResDnRequirement = :COMMIT, :START, :SHUT, :LOL, :RESUP, :RESDN, :SOEUP, :SOEDN, :ERESUP, :ERESDN, :hour, :GEN, :CH, :DIS, :ResUpRequirement, :ResDnRequirement 
-ITERATION = :iteration
-DEMAND = :demand
-NB_ITERATIONS = 10000
 
 function get_variable_base_name(variable)
     return Symbol(match(r"([A-z]+)\[", name(first(variable)))[1])
@@ -42,15 +33,15 @@ function get_envelope_variables(model)
 end
 
 function get_variables_to_fix(model)
-    variables_to_fix =  [COMMIT, START, SHUT,:RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP]
+    variables_to_fix =  [:COMMIT, :START, :SHUT,:RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN, :SERESUP]
     return [(var, value.(model[var])) for var in variables_to_fix if haskey(model, var)]
 end
 
 function get_variables_to_constrain(model; kwargs...)
-    variables_to_constrain = get(kwargs, :variables_to_constrain, [GEN])
+    variables_to_constrain = get(kwargs, :variables_to_constrain, [:GEN])
     constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
     if constrain_SOE_by_envelopes
-        variables_to_constrain = [GEN]
+        variables_to_constrain = [:GEN]
         println("variables_to_constrain set to [:GEN] because constrain_SOE_by_envelopes is true")
     end
     return [(var, value.(model[var])) for var in variables_to_constrain] 
@@ -62,10 +53,9 @@ function construct_economic_dispatch(gen_df; kwargs... )
     storage = get(kwargs, :storage, nothing)
     ramp_constraints = get(kwargs, :ramp_constraints, true)
     sets =  get_sets(gen_df)
-    # extra_OV = get(kwargs, :extra_OV, 0)
     mip_gap = get(kwargs, :mip_gap, 1e-8)
-    energy_reserve = get(kwargs, :energy_reserve, false)
     constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
+    
     ed = ED(gen_df, VLOL, VLGEN, mip_gap)
     if !isnothing(storage)
         println("Adding storage...")
@@ -80,7 +70,6 @@ function construct_economic_dispatch(gen_df; kwargs... )
         println("Adding ramp constraints...")   
         add_ramp_constraints(ed, gen_df, sets)
     end
-    # remove_energy_and_reserve_constraints(ed)
     return ed
 end
 
@@ -103,50 +92,10 @@ function ED(gen_df, VLOL, VLGEN, mip_gap)
     VLOL = convert_to_indexed_vector(VLOL, T)
     VLGEN = convert_to_indexed_vector(VLGEN, T)
     @variable(ed, extra_OV in Parameter(0))
-    # ed = uc # pointer, uc object will change
-    
-    # set_optimizer_attribute(ed, "TimeLimit", 60.0)    # 60 seconds
-    
-
-    # remove_variable_constraint(ed, :p_DEMAND, true)
-    # remove_variable_constraint(ed, :p_MAX_GEN, true)
-    # remove_variable_constraint(ed, :SupplyDemand, false)
-    # remove_variable_constraint(ed, :SupplyDemandBalance, true)
-    # remove_variable_constraint(ed, :Cap_thermal_min, true)
-    # remove_variable_constraint(ed, :Cap_thermal_max, true)
-    # remove_variable_constraint(ed, :Cap_nt_nonvar, true)
-    # remove_variable_constraint(ed, :Cap_var, true)
-    # remove_variable_constraint(ed, :OPEX, false)
-    # remove_variable_constraint(ed, :StartCost, false)
-    # remove_variable_constraint(ed, :OperationalCost, false)
-    # remove_variable_constraint(ed, :AuxGen, true)
-    # remove_variable_constraint(ed, :RampUp_thermal, true)
-    # remove_variable_constraint(ed, :RampDn_thermal, true)
-    # remove_variable_constraint(ed, :RampUp_nonthermal, true)
-    # remove_variable_constraint(ed, :RampDn_nonthermal, true)
-    # remove_variable_constraint(ed, :GENAUX, false)
-    # remove_variable_constraint(ed, :CH, true)
-    # remove_variable_constraint(ed, :DIS, true)
-    # remove_variable_constraint(ed, :SOE, true)
-    # remove_variable_constraint(ed, :M, true)
-    # remove_variable_constraint(ed, :StorageOperationalCost, false)
-    # remove_variable_constraint(ed, :ChargeLogic, true)
-    # remove_variable_constraint(ed, :DischargeLogic, true)
-    # remove_variable_constraint(ed, :SOEEvol, true)
-    # remove_variable_constraint(ed, :SOEMax, true)
-    # remove_variable_constraint(ed, :SOEMin, true)
-    # remove_variable_constraint(ed, :CHMin, true)
-    # remove_variable_constraint(ed, :DISMin, true)
-    # remove_variable_constraint(ed, :SOEO, true)
-    # remove_variable_constraint(ed, :SOEFinal, true)
-
-
     @variable(ed, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
     @variable(ed, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
-
     @variable(ed, VLOL[t in keys(VLOL)] in Parameter(VLOL[t])) # for post-processing purposes
     @variable(ed, VLGEN[t in keys(VLGEN)] in Parameter(VLGEN[t])) # for post-processing purposes
-    
      @variables(ed, begin
         GEN[G, T]  >= 0 # generation
         COMMIT[G_thermal, T], Bin # commitment status (Bin=binary)
@@ -159,11 +108,6 @@ function ED(gen_df, VLOL, VLGEN, mip_gap)
         LGEN[T] >= 0
         end)
 
-    # START = ed[:START]
-    # COMMIT = ed[:COMMIT]
-    # GEN = ed[:GEN]
-    
-    
     @expression(ed, StartCost,
         sum(gen_df[gen_df.r_id .== g,:start_cost_per_mw][1]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*START[g,t] for g in G_thermal for t in T)
     )
@@ -182,21 +126,6 @@ function ED(gen_df, VLOL, VLGEN, mip_gap)
     @objective(ed, Min, 
         OPEX + sum(LOL[t]*VLOL[t] + LGEN[t]*VLGEN[t] for t in T) + extra_OV
     )
-    # if haskey(ed, :StorageOperationalCost)
-    #     @objective(ed, Min, 
-    #         objective_function(ed) + ed[:StorageOperationalCost]
-    #     )
-    # end
-    # if haskey(ed, :ReservePenalizationCost)
-    #     @objective(ed, Min, 
-    #         objective_function(ed) + ed[:ReservePenalizationCost] + ed[:ReserveSlackPenalizationCost]
-    #     )
-    # end
-    # if haskey(ed, :EnergyReservePenalizationCost)
-    #     @objective(ed, Min, 
-    #         objective_function(ed) + ed[:EnergyReservePenalizationCost] + ed[:EnergyReserveSlackPenalizationCost]
-    #     )
-    # end     
 
     @expression(ed, SupplyDemand[t in T],
         sum(GEN[g,t] for g in G) + LOL[t] - LGEN[t]
@@ -239,17 +168,11 @@ function update_envelope_parameters(model, envelope_variables, energy_envelope)
 end
 
 function constrain_decision_variables(model, reserve_variables, variables_to_constrain, constrain_dispatch, constrain_by_energy, bidirectional_storage_reserve)
-    # This function will fixes the following decision variables :COMMIT, :START, :SHUT, :RESUP, :RESDN, :ERESUP, :ERESDN, :SRESDN, :SRESUP, :SERESDN,:SERESUP
     # If constrain_dispatch = true, it constraints the dispatch variables (up to three: :GEN, :CH and :DIS) according to the reserve procured at UC stage.
     # Variables that do not have a reserve or energy reserve element associated will be fixed to their value at UC stage.
     # If constrain_dispatch = false, units providing reserve or energy reserve will not have their dispatched constrained, but not providing reserves will have their dispatch fixed to the value at UC stage.
     # If bidirectional_storage_reserve = true, it will consider that the reserve is provided by the storage unit in both charging modes.
-    # If constrain_SOE_by_envelopes is true, it will add SOE envelopes for SOE.
     # It will also constrain variables in variables_to_constrain according to the reserve procured at UC stage.
-    # If remove_variables_from_objective, it will remove the fixed decision variables from the objective function
-    #  values extraction
-    # constrain_by_energy = haskey(model, :ERESUP) # determines whether reserves or energy reserves
-    # reserve_variables = get_reserves_variables(model, constrain_by_energy) # values extraction
     if constrain_dispatch # assumes either ERESUP or RESUP exists
         constrain_dispatch_variables_according_to_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; reserve_variables...)
     end
@@ -270,15 +193,15 @@ function constraint_dispatch_variables_with_no_reserve(model, bidirectional_stor
     end
 
     if bidirectional_storage_reserve
-        gen_logic_group = [GEN]
-        dis_logic_group = [DIS]
-        ch_logic_group = [CH]
+        gen_logic_group = [:GEN]
+        dis_logic_group = [:DIS]
+        ch_logic_group = [:CH]
         ch_logic_group_2 = []
     else
-        gen_logic_group = [GEN, DIS]
+        gen_logic_group = [:GEN, :DIS]
         dis_logic_group = []
         ch_logic_group = []
-        ch_logic_group_2 = [CH]
+        ch_logic_group_2 = [:CH]
     end
     for (var_name, var_value) in variables_to_constrain
         if var_name in gen_logic_group
@@ -298,7 +221,6 @@ function constrain_dispatch_variables_according_to_reserve(model, bidirectional_
     # Dispatch constrained based on the procured reserve or energy reserve at the UC stage
     # Function fixes up to three variable types: :GEN, :CH and :DIS
     # If Constrain_by_energy= true, integral of redispatch in [j,t] is constrained by the respective energy reserve term. Otherwise, constraints are pointwise.
-
     function constrain_production_variables(model, var_name, var_value, res_up_var_name, res_up_var_value, constrain_by_energy; lower_bound = false)
         # This same function is used to constraints :GEN, :CH and :DIS variables 
         T = axes(var_value)[2]
@@ -332,15 +254,15 @@ function constrain_dispatch_variables_according_to_reserve(model, bidirectional_
 
     println("Constraining dispatch to procured reserve...")
     if bidirectional_storage_reserve
-        gen_logic_group = [GEN]
-        dis_logic_group = [DIS]
-        ch_logic_group = [CH]
+        gen_logic_group = [:GEN]
+        dis_logic_group = [:DIS]
+        ch_logic_group = [:CH]
         ch_logic_group_2 = []
     else
-        gen_logic_group = [GEN, DIS]
+        gen_logic_group = [:GEN, :DIS]
         dis_logic_group = []
         ch_logic_group = []
-        ch_logic_group_2 = [CH]
+        ch_logic_group_2 = [:CH]
     end
     for (var_name, var_value) in variables_to_constrain
         if var_name in gen_logic_group
@@ -386,8 +308,6 @@ function constrain_SOE_to_envelopes(model)
 end
 
 function constraint_SOE_final_to_envelopes(model)
-    # It assumes envelopes have been calculated by this stage
-    # Must be called after SOE final restrictions are imposed
     println("Constraining SOE final to envelopes...")
     SOE = model[:SOE]
     S = axes(SOE)[1]
@@ -405,13 +325,9 @@ end
 function fix_decision_variables(model, variables, remove_variables_from_objective = true)
     println("Fixing decision variables...")
     for (var_name, var_value) in variables
-        # Get the variable name from the original model
-        # var_name = get_variable_base_name(var)
-        
         # Check if this variable exists in the current model
         if haskey(model, var_name)
             model_var = model[var_name]
-            
             # Fix variables in the current model using values from the other model
             for key in collect(eachindex(model_var))
                 fix(model_var[key], var_value[key]; force = !is_binary(model_var[key]))
@@ -426,55 +342,9 @@ function fix_decision_variables(model, variables, remove_variables_from_objectiv
     end
 end
 
-function remove_energy_and_reserve_constraints(model)
-    println("Removing reserve, energy reserve and envelope constraints...")
-    # Remove reserve, energy reserve and storge envelope's associated variables/constraints
-    # TODO: check fix decision variables
-    keys = [:ResUpRequirement, :ResDnRequirement,
-        :EnergyResUpRequirement, :EnergyResDnRequirement,
-        :ResUpThermal, :ResDnThermal, :ResUpRamp, :ResDnRamp, :ResUpRampRobust, :ResDnRampRobust,
-        :EnergyResUpThermal, :EnergyResDownThermal, :EnergyResUpRamp, :EnergyResDnRamp,
-        :ResUpStorage, :ResDownStorage, # TODO: no longer needed
-        
-        :ResUpStorageDisCapacityMax, :ResUpStorageDisLogic, :ResUpStorageChCapacityMax, :ResUpStorageChLogic, # power constraints
-        :ResDownStorageChCapacityMax, :ResDownStorageChLogic, :ResDownStorageDisCapacityMax, :ResDownStorageDisLogic, # power constraints
-        
-        :EnergyResUpStorageDisCapacityMax, :EnergyResUpStorageChCapacityMax, # power constraints
-        :EnergyResDownStorageChCapacityMax, :EnergyResDownStorageDisCapacityMax, 
-
-        :ResUpStorageDisMax, :ResDownStorageChMax, # energy constraints
-        :EnergyResUpStorageEnergyMax, :EnergyResDownStorageEnergyMax, # energy constraints
-        :ResUpStorageCapacityMax, :ResDownStorageCapacityMax, # aggregation 
-        :EnergyResUpStorage, :EnergyResDownStorage, # aggregation
-
-        :EnergyResUpLink, :EnergyResUpLinkBis, :EnergyResDownLink, :EnergyResDownLinkBis, # linking constrains
-        # :D,:U,
-        :SOEUpEvol, :SOEDnEvol, :SOEUP_0, :SOEDN_0, :SOEUPMax, :SOEDNMax, :SOEUPMin, :SOEDNMin,#, :SOEDN, :SOEUP,
-        :ESOEUpEvol, :ESOEDnEvol, :ESOEUPMax, :ESOEDNMax, :ESOEUPMin, :ESOEDNMin,
-        # :EnergyResUpThermal, :EnergyResDownThermal, :EnergyResUpRamp, :EnergyResDnRamp,
-        # :EnergyResUpZero, :EnergyResDnZero,
-        # :EnergyResUpStorage, :EnergyResDownStorage, :EnergyResUpLink, :EnergyResDownLink,
-
-        :OVMax, :OVMin, :ResUpThermalMin, :ResDownThermalMin, :CommitmentMin, :ResUpStorageMax, :ResUpStorageMin,
-        :Startup, :Shutdown, :CommitmentStatus,
-        #:RESUP, :RESDN, -> do not remove because belong to the OF.
-        # :RESUP, :RESDN, :ERESUP, :ERESDN, 
-        :RESUPCH, :RESDNCH, :RESUPDIS, :RESDNDIS,
-        :ERESUPCH, :ERESDNCH, :ERESUPDIS, :ERESDNDIS,
-        # :COMMIT, :START, :SHUT, -> do not remove because belong to the OF.
-        ]
-    for k in keys
-        if haskey(model, k)
-            remove_variable_constraint(model, k)
-        end
-    end
-end
-
-
 
 function solve_economic_dispatch_(ed, gen_df, loads, gen_variable; kwargs...)
     print("Solving ED...")
-    set_optimizer_attribute(ed, "TimeLimit", 60.0)
     optimize!(ed)
     if !is_solved_and_feasible(ed)
         print("model not solved or feasible.")
@@ -490,10 +360,10 @@ function launch_monte_carlo_get_solution(ed, gen_df, loads, gen_variable; kwargs
     solutions = Dict()
     kwargs = Dict(kwargs)
     # At this point one idea would be to copy several instances of ed so all of them use the same input solution from uc
-    for k in first(propertynames(loads[!, Not([HOUR,:day])]), max_iterations)
+    for k in first(propertynames(loads[!, Not([:hour,:day])]), max_iterations)
         println("")
         println("Montecarlo iteration: $k")
-        gen_df_k, loads_df_k, gen_variable_k = pre_process_load_gen_variable(gen_df, rename(loads[!,[HOUR,k]], k=>DEMAND), gen_variable) # remove negative net load to convert it into net generation asset
+        gen_df_k, loads_df_k, gen_variable_k = pre_process_load_gen_variable(gen_df, rename(loads[!,[:hour,k]], k=>:demand), gen_variable) # remove negative net load to convert it into net generation asset
         update_parameter_value(ed, :p_DEMAND, loads_df_k[:,:demand])
         update_parameter_value(ed, :p_MAX_GEN, convert_to_matrix(gen_variable_k, :r_id, :hour, :max_production_mw))
         solutions[k] = solve_economic_dispatch_(ed, gen_df_k, loads_df_k, gen_variable_k; kwargs...)

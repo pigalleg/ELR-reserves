@@ -94,7 +94,7 @@ function get_nonfeasbile_model_information(model)
 end
 
 
-function merge_solutions(solutions::Dict, merge_keys = [ITERATION])
+function merge_solutions(solutions::Dict, merge_keys = [:iteration])
     #TODO can be done more elegantly
     # called only by ED
     solution_keys = union([keys(v) for (k,v) in solutions]...)
