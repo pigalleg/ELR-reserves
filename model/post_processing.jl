@@ -1,6 +1,7 @@
 using DataFrames
 using Parquet2
 include("./pre_processing.jl")
+include("./unit_commitment/config.jl")
 
 FIELD_FOR_ENRICHING = [:r_id, :resource, :full_id]
 SOLUTION_KEYS = [:demand, :generation, :storage, :reserve, :energy_reserve, :scalar, :generation_parameters, :storage_parameters, :objective_function, :dual_variables]
@@ -136,9 +137,9 @@ end
 function get_model_solution(model, gen_df, gen_variable; loads = nothing, scenarios = nothing, config...)
     #TODO: loads not used 
     # Model is either UC or ED or SUC
-    get_dual_variables = get(config, :get_dual_variables, false)
-    storage = get(config, :storage, nothing)
-    enriched_solution = get(config, :enriched_solution, true)
+    get_dual_variables = get(config, :get_dual_variables, g_dual_variables)
+    storage = get(config, :storage, g_storage)
+    enriched_solution = get(config, :enriched_solution, g_enriched_solution)
     stochastic = !isnothing(scenarios)
     parameters_for_enriching = (MIPGap = parameter_value(model[:MIPGap]),)
     if haskey(model, :VRESERVE) # UC

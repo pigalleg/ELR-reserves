@@ -38,8 +38,8 @@ function get_variables_to_fix(model)
 end
 
 function get_variables_to_constrain(model; kwargs...)
-    variables_to_constrain = get(kwargs, :variables_to_constrain, [:GEN])
-    constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
+    variables_to_constrain = get(kwargs, :variables_to_constrain, g_variables_to_constrain)
+    constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, g_constrain_SOE_by_envelopes)
     if constrain_SOE_by_envelopes
         variables_to_constrain = [:GEN]
         println("variables_to_constrain set to [:GEN] because constrain_SOE_by_envelopes is true")
@@ -48,14 +48,14 @@ function get_variables_to_constrain(model; kwargs...)
 end
 
 function construct_economic_dispatch(gen_df; kwargs... )
-    VLOL = get(kwargs, :VLOL, 1e4)
-    VLGEN = get(kwargs, :VLGEN, 0)
-    storage = get(kwargs, :storage, nothing)
-    ramp_constraints = get(kwargs, :ramp_constraints, true)
-    sets =  get_sets(gen_df)
-    mip_gap = get(kwargs, :mip_gap, 1e-8)
-    constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, false)
+    VLOL = get(kwargs, :VLOL, g_VLOL)
+    VLGEN = get(kwargs, :VLGEN, g_VLGEN)
+    storage = get(kwargs, :storage, g_storage)
+    ramp_constraints = get(kwargs, :ramp_constraints, g_ramp_constraints)
+    mip_gap = get(kwargs, :mip_gap, g_mip_gap)
+    constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, g_constrain_SOE_by_envelopes)
     
+    sets =  get_sets(gen_df)
     ed = ED(gen_df, VLOL, VLGEN, mip_gap)
     if !isnothing(storage)
         println("Adding storage...")
@@ -141,9 +141,9 @@ function ED(gen_df, VLOL, VLGEN, mip_gap)
 end
 
 function update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; kwargs...)
-    bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, true)
-    constrain_dispatch = get(kwargs, :constrain_dispatch, true)
-    remove_variables_from_objective = get(kwargs, :remove_variables_from_objective, false)
+    bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, g_bidirectional_storage_reserve)
+    constrain_dispatch = get(kwargs, :constrain_dispatch, g_constrain_dispatch)
+    remove_variables_from_objective = get(kwargs, :remove_variables_from_objective, g_remove_variables_from_objective)
     constrain_by_energy =  reserve_variables[:res_up_var] == :ERESUP
     constrain_decision_variables(ed, reserve_variables, variables_to_constrain, constrain_dispatch, constrain_by_energy, bidirectional_storage_reserve)
     fix_decision_variables(ed, variables_to_fix, remove_variables_from_objective)
@@ -356,7 +356,7 @@ end
 
 
 function launch_monte_carlo_get_solution(ed, gen_df, loads, gen_variable; kwargs...)
-    max_iterations = get(kwargs, :max_iterations, 100)
+    max_iterations = get(kwargs, :max_iterations, g_max_iterations)
     solutions = Dict()
     kwargs = Dict(kwargs)
     # At this point one idea would be to copy several instances of ed so all of them use the same input solution from uc
