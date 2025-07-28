@@ -220,16 +220,16 @@ end
 
 
 
-function generate_ed_solutions(;days = nothing, μs = nothing, day_µ_configuration_file = nothing, kwargs...)
+function generate_ed_solutions(;days = nothing, μs = nothing, day_µ_configurations_file = nothing, kwargs...)
     folders = get(kwargs, :folders, [(get(kwargs, :input_folder, G_input_folder), get(kwargs, :output_folder, "./output"))])
     # day_µ_configurations = generate_μ_configurations(get(kwargs, :day_µ_configurations, nothing))
     for (input_folder, output_folder) in folders
-        if isnothing(day_µ_configuration_file) #  we assume days and µs are provided
+        if isnothing(day_µ_configurations_file) #  we assume days and µs are provided
             day_µ_configurations = df_to_day_µ_configurations(
                 DataFrame(day = days, value = µs)
             )
-        else # we assume that the day_µ_configuration_file is provided
-            day_µ_configurations = generate_day_µ_configurations(input_folder, day_µ_configuration_file)
+        else # we assume that the day_µ_configurations_file is provided
+            day_µ_configurations = generate_day_µ_configurations(input_folder, day_µ_configurations_file)
         end
         generate_ed_solutions_(day_µ_configurations, input_folder, output_folder; kwargs...)
         generate_post_processing_KPI_files(output_folder, stochastic = false)
@@ -245,9 +245,7 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
         :constrain_dispatch => get(kwargs, :constrain_dispatch, g_constrain_dispatch),
         :thermal_reserve =>  get(kwargs, :thermal_reserve, g_thermal_reserve),
     )
-    # configurations = vcat(configurations, [:base_ramp_storage_energy_reserve_cumulated])
    
-
     gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve_, required_energy_reserve_ = generate_deterministic_input_data(input_folder)
     config = merge(add_to_config, generate_basic_configuration(storage_df, energy_reserve))
     uc = construct_unit_commitment(
@@ -279,17 +277,12 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
                 loads = loads_df,
                 config...
             )
+
             reserve_variables = get_reserves_variables(uc) 
             envelope_variables = get_envelope_variables(uc)
             variables_to_fix = get_variables_to_fix(uc) 
             variables_to_constrain = get_variables_to_constrain(uc; config...) 
 
-            if haskey(uc, :ReservePenalizationCost)
-                extra_OV = value(uc[:ReservePenalizationCost])
-            elseif haskey(uc, :EnergyReservePenalizationCost)
-                extra_OV = value(uc[:EnergyReservePenalizationCost])
-            end
-            set_parameter_value(ed[:extra_OV], extra_OV)
             update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; config...)
             update_envelope_parameters(ed, envelope_variables, config[:energy_reserve])
             s_ed[(day,μ_config.key)] = launch_monte_carlo_get_solution(
@@ -299,7 +292,6 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
                 gen_variable_df;
                 config...
             )
-            # s_uc = Dict(pairs(s_uc))
         end
         s_ed = merge_solutions(s_ed, [:day, :configuration])
         s_uc = merge_solutions(s_uc, [:day, :configuration])
@@ -308,7 +300,6 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
                 (reserve = vcat(get(s_uc, :reserve, DataFrame()), s_uc[:energy_reserve][s_uc[:energy_reserve].hour.==s_uc[:energy_reserve].hour_i,:][:,Not(:hour_i)]),)
             )
         end
-        # s_uc = NamedTuple(s_uc)
         if write
             if !isdir(output_folder) mkpath(output_folder) end
             folder_path = joinpath(output_folder,"n_$(day)")
@@ -316,7 +307,6 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
             solution_to_parquet(s_ed, "s_ed", folder_path)
         end
     end
-    # return s_uc, s_ed
 end
 
 function generate_suc_solutions(;days, kwargs...)
