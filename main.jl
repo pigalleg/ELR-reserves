@@ -1,4 +1,5 @@
 using Infiltrator
+
 include("./model/pre_processing.jl")
 include("./model/post_processing.jl")
 include("./model/metrics.jl")
@@ -219,27 +220,23 @@ end
 
 
 
-function generate_ed_solutions(;days, kwargs...)
-    function generate_μ_configurations(μs) #   μs = [(μ_key = (up =::Vector, down=::Vector),)...]  # configuration name is for labeling purposes only
-        mu_to_string(x) = isinteger(x) ? string(Int(x)) : replace(string(x), "." => "_")
-        if isa(μs, NamedTuple) # if μs is a list of named tuples μs = [(μ_key = (up =::Vector, down=::Vector),)...]
-            return [(key = Symbol("base_ramp_storage_envelopes_$(key)"), value = value) for (key, value) in pairs(μs)]
-        else  # we assume is a list of values, μs =[float....] 
-            return [(key = Symbol("base_ramp_storage_envelopes_up_$(mu_to_string(μ))_dn_$(mu_to_string(μ))"),  value = (up = μ, down = μ)) for μ in μs]
-        end
-    end
-
+function generate_ed_solutions(;days = nothing, μs = nothing, day_µ_configuration_file = nothing, kwargs...)
     folders = get(kwargs, :folders, [(get(kwargs, :input_folder, G_input_folder), get(kwargs, :output_folder, "./output"))])
+    # day_µ_configurations = generate_μ_configurations(get(kwargs, :day_µ_configurations, nothing))
     for (input_folder, output_folder) in folders
-        # for day in days
-        #     generate_ed_solutions_([day], input_folder, output_folder, generate_μ_configurations(get(kwargs, :μs, nothing)); kwargs...)
-        # end
-        generate_ed_solutions_(days, input_folder, output_folder, generate_μ_configurations(get(kwargs, :μs, nothing)); kwargs...)
+        if isnothing(day_µ_configuration_file) #  we assume days and µs are provided
+            day_µ_configurations = df_to_day_µ_configurations(
+                DataFrame(day = days, value = µs)
+            )
+        else # we assume that the day_µ_configuration_file is provided
+            day_µ_configurations = generate_day_µ_configurations(input_folder, day_µ_configuration_file)
+        end
+        generate_ed_solutions_(day_µ_configurations, input_folder, output_folder; kwargs...)
         generate_post_processing_KPI_files(output_folder, stochastic = false)
     end
 end
 
-function generate_ed_solutions_(days, input_folder, output_folder, μ_configurations; kwargs...)
+function generate_ed_solutions_(days_configurations, input_folder, output_folder; kwargs...)
     write = get(kwargs, :write, true)
     energy_reserve = get(kwargs, :energy_reserve, g_energy_reserve)
     
@@ -249,10 +246,8 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         :thermal_reserve =>  get(kwargs, :thermal_reserve, g_thermal_reserve),
     )
     # configurations = vcat(configurations, [:base_ramp_storage_energy_reserve_cumulated])
-    s_uc = Dict()
-    s_ed = Dict()
+   
 
-    
     gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve_, required_energy_reserve_ = generate_deterministic_input_data(input_folder)
     config = merge(add_to_config, generate_basic_configuration(storage_df, energy_reserve))
     uc = construct_unit_commitment(
@@ -261,63 +256,67 @@ function generate_ed_solutions_(days, input_folder, output_folder, μ_configurat
         config...
     )
     ed = construct_economic_dispatch(gen_df_; config...)
-    for day in days, μ_config in μ_configurations
-        # (day, μ_config) in Iterators.product(days, μ_configurations)
-        println("Processing day $(day) with configuration $(μ_config.key)...")
-        loads_df = filter_day(day, loads_df_)
-        gen_variable_df = filter_day(day, gen_variable_df_)
-        random_loads_df = filter_day(day, random_loads_df_)
-        required_reserve = filter_day(day, required_reserve_)
-        required_energy_reserve = filter_day(day, required_energy_reserve_)
-        gen_df, loads_df, gen_variable_df = pre_process_load_gen_variable(gen_df_, loads_df, gen_variable_df)
-        μ_up, μ_dn = pre_process_μ(μ_config.value.up, μ_config.value.down)
+    
+    for (day, μ_configs) in days_configurations
+        s_uc = Dict()
+        s_ed = Dict()
+        for µ_config in μ_configs
+            println("Processing day $(day) with configuration $(μ_config.key)...")
+            loads_df = filter_day(day, loads_df_)
+            gen_variable_df = filter_day(day, gen_variable_df_)
+            random_loads_df = filter_day(day, random_loads_df_)
+            required_reserve = filter_day(day, required_reserve_)
+            required_energy_reserve = filter_day(day, required_energy_reserve_)
+            gen_df, loads_df, gen_variable_df = pre_process_load_gen_variable(gen_df_, loads_df, gen_variable_df)
+            μ_up, μ_dn = pre_process_μ(μ_config.value.up, μ_config.value.down)
 
-        update_daily_data(uc, loads_df, gen_variable_df, storage_df, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
-        optimize!(uc)
-        s_uc[(day,μ_config.key)] = get_model_solution(
-            uc,
-            gen_df,
-            gen_variable_df;
-            loads = loads_df,
-            config...
-        )
-        reserve_variables = get_reserves_variables(uc) 
-        envelope_variables = get_envelope_variables(uc)
-        variables_to_fix = get_variables_to_fix(uc) 
-        variables_to_constrain = get_variables_to_constrain(uc; config...) 
+            update_daily_data(uc, loads_df, gen_variable_df, storage_df, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
+            optimize!(uc)
+            s_uc[(day,μ_config.key)] = get_model_solution(
+                uc,
+                gen_df,
+                gen_variable_df;
+                loads = loads_df,
+                config...
+            )
+            reserve_variables = get_reserves_variables(uc) 
+            envelope_variables = get_envelope_variables(uc)
+            variables_to_fix = get_variables_to_fix(uc) 
+            variables_to_constrain = get_variables_to_constrain(uc; config...) 
 
-        if haskey(uc, :ReservePenalizationCost)
-            extra_OV = value(uc[:ReservePenalizationCost])
-        elseif haskey(uc, :EnergyReservePenalizationCost)
-            extra_OV = value(uc[:EnergyReservePenalizationCost])
+            if haskey(uc, :ReservePenalizationCost)
+                extra_OV = value(uc[:ReservePenalizationCost])
+            elseif haskey(uc, :EnergyReservePenalizationCost)
+                extra_OV = value(uc[:EnergyReservePenalizationCost])
+            end
+            set_parameter_value(ed[:extra_OV], extra_OV)
+            update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; config...)
+            update_envelope_parameters(ed, envelope_variables, config[:energy_reserve])
+            s_ed[(day,μ_config.key)] = launch_monte_carlo_get_solution(
+                ed,
+                gen_df,
+                random_loads_df,
+                gen_variable_df;
+                config...
+            )
+            # s_uc = Dict(pairs(s_uc))
         end
-        set_parameter_value(ed[:extra_OV], extra_OV)
-        update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; config...)
-        update_envelope_parameters(ed, envelope_variables, config[:energy_reserve])
-        s_ed[(day,μ_config.key)] = launch_monte_carlo_get_solution(
-            ed,
-            gen_df,
-            random_loads_df,
-            gen_variable_df;
-            config...
-        )
+        s_ed = merge_solutions(s_ed, [:day, :configuration])
+        s_uc = merge_solutions(s_uc, [:day, :configuration])
+        if haskey(s_uc, :energy_reserve) 
+            s_uc = merge(s_uc, 
+                (reserve = vcat(get(s_uc, :reserve, DataFrame()), s_uc[:energy_reserve][s_uc[:energy_reserve].hour.==s_uc[:energy_reserve].hour_i,:][:,Not(:hour_i)]),)
+            )
+        end
+        # s_uc = NamedTuple(s_uc)
+        if write
+            if !isdir(output_folder) mkpath(output_folder) end
+            folder_path = joinpath(output_folder,"n_$(day)")
+            solution_to_parquet(s_uc, "s_uc", folder_path)
+            solution_to_parquet(s_ed, "s_ed", folder_path)
+        end
     end
-    s_ed = merge_solutions(s_ed, [:day, :configuration])
-    s_uc = merge_solutions(s_uc, [:day, :configuration])
-    # s_uc = Dict(pairs(s_uc))
-    if haskey(s_uc, :energy_reserve) 
-        s_uc = merge(s_uc, 
-            (reserve = vcat(get(s_uc, :reserve, DataFrame()), s_uc[:energy_reserve][s_uc[:energy_reserve].hour.==s_uc[:energy_reserve].hour_i,:][:,Not(:hour_i)]),)
-        )
-    end
-    # s_uc = NamedTuple(s_uc)
-    if write
-        if !isdir(output_folder) mkpath(output_folder) end
-        folder_path = joinpath(output_folder,"n_$(join(days,"-"))")
-        solution_to_parquet(s_uc, "s_uc", folder_path)
-        solution_to_parquet(s_ed, "s_ed", folder_path)
-    end
-    return s_uc, s_ed
+    # return s_uc, s_ed
 end
 
 function generate_suc_solutions(;days, kwargs...)
