@@ -109,6 +109,27 @@ function generate_reserves(input_location)
   return out
 end
 
+function generate_day_µ_configurations(input_folder, file)
+  df = CSV.read(joinpath(input_folder,"uc","$(file).csv"), DataFrame)
+  df = stack(df, Not(:day))  # df = stack(df, Not(:day)) # we assume structur of columns is [:day,:mu_1,...:mu_n]
+  return df_to_day_µ_configurations(df)
+end
+
+function df_to_day_µ_configurations(df)
+  # example of output:  [(1, [(key = :base_ramp_storage_envelopes_up_0_54_dn_0_54, value = (up = 0.54, down = 0.54)), (key = :base_ramp_storage_envelopes_up_1_dn_1, value = (up = 1.0, down = 1.0))])
+  sort!(df,:day)
+  out = [(d, generate_μ_configurations(df[df.day .== d, :value])) for d in unique(df.day)]
+  return out
+end
+
+function generate_μ_configurations(μs) #   μs = [(μ_key = (up =::Vector, down=::Vector),)...]  # configuration name is for labeling purposes only
+    mu_to_string(x) = isinteger(x) ? string(Int(x)) : replace(string(x), "." => "_")
+    if isa(μs, NamedTuple) # if μs is a list of named tuples μs = [(μ_key = (up =::Vector, down=::Vector),)...]
+        return [(key = Symbol("base_ramp_storage_envelopes_$(key)"), value = value) for (key, value) in pairs(μs)]
+    else  # we assume is a list of values, μs =[float....] 
+        return [(key = Symbol("base_ramp_storage_envelopes_up_$(mu_to_string(μ))_dn_$(mu_to_string(μ))"),  value = (up = μ, down = μ)) for μ in μs]
+    end
+end
 # function generate_reserves(day, input_location, ε=nothing, ρ=nothing)
 #   file = joinpath(input_location, g_UC_DATA, "Reserve.csv")
 #   if isfile(file)

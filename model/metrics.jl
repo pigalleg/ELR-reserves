@@ -115,12 +115,7 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
             group_by_uc = intersect([:configuration, :day], group_by)
             out =  leftjoin!(out, calculate_uc_dual_variables(s_uc, group_by_uc), on = group_by_uc) #TODO: check if innerjoin can be used instead of left to generate missing values instead of repetead ones
         end
-        @infiltrate
         return out
-    end
-    
-    function calculate_economic_metrics(s_ed,_s_uc, group_by)
-
     end
     group_by = intersect([:configuration, :day, :iteration, :scenario], propertynames(s_ed.demand))
     gcdi_KPI = calculate_basic_KPI(s_ed, group_by)
