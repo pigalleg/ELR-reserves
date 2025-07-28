@@ -141,6 +141,7 @@ function get_model_solution(model, gen_df, gen_variable; loads = nothing, scenar
     storage = get(config, :storage, g_storage)
     enriched_solution = get(config, :enriched_solution, g_enriched_solution)
     stochastic = !isnothing(scenarios)
+    sets = get_sets(gen_df)
     parameters_for_enriching = (MIPGap = parameter_value(model[:MIPGap]),)
     if haskey(model, :VRESERVE) # UC
         parameters_for_enriching = merge(parameters_for_enriching, (VRESERVE = parameter_value(model[:VRESERVE]),))
@@ -608,7 +609,12 @@ end
 
 function get_generation_parameters(gen_df)
     parameters_to_get = [:existing_cap_mw, :min_power]
-    return rename(copy(gen_df[!,union(FIELD_FOR_ENRICHING, parameters_to_get)]), :existing_cap_mw => :P_max_MW)
+    out = rename(copy(gen_df[!,union(FIELD_FOR_ENRICHING, parameters_to_get)]), :existing_cap_mw => :P_max_MW)
+    sets = get_sets(gen_df)
+    out.is_thermal = out.r_id .∈ Ref(sets.G_thermal)
+    out.is_var = out.r_id .∈ Ref(sets.G_var)
+    out.is_nt_nonvar = out.r_id .∈ Ref(sets.G_nt_nonvar)
+    return out
 end
 
 function get_storage_parameters(storage)
