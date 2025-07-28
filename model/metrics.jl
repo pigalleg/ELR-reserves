@@ -32,19 +32,15 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
             ΔSOE.net_SOE_MWh = ΔSOE.SOE_T_MWh .- ΔSOE.SOE_0_MWh
             return ΔSOE
         end
-        # f_ΔSOE
-        # begin TODO ##############################################################
-        # - Following filter could automatically be constructed with information that can be stored in s_ed.generation_parameters
-        # - ATTENTION: net_generation is not included in RES. That can be misleading as net_generation here captures RES
-        RES_filter = in(["onshore_wind_turbine", "small_hydroelectric", "solar_photovoltaic", "net_generation"]).(s_ed.generation.resource)
-        thermal_filter = in(["natural_gas_fired_combined_cycle", "natural_gas_fired_combustion_turbine",]).(s_ed.generation.resource)
-        nonRES_nonThermal_filter = .!RES_filter .& .!thermal_filter  
-        # end TODO ################################################################
+
+        var_filter = s_ed.generation.r_id .∈ Ref(s_ed.generation_parameters[s_ed.generation_parameters.is_var,:r_id])
+        thermal_filter = s_ed.generation.r_id .∈ Ref(s_ed.generation_parameters[s_ed.generation_parameters.is_thermal,:r_id])
+        nt_nonvar_filter = .!var_filter .& .!thermal_filter
         out = outerjoin(
             combine(groupby(s_ed.demand, group_by), [:LOL_MW, :demand_MW] => ((x, y) -> f_LOL(x, y)) => AsTable),
-            combine(groupby(s_ed.generation[RES_filter, :], group_by), [:curtailment_MW, :production_MW] => ((x, y) -> f_CUR(x, y)) => AsTable),
+            combine(groupby(s_ed.generation[var_filter, :], group_by), [:curtailment_MW, :production_MW] => ((x, y) -> f_CUR(x, y)) => AsTable),
             combine(groupby(s_ed.generation[thermal_filter, :], group_by), :production_MW => sum => :thermal_production_MWh),
-            combine(groupby(s_ed.generation[nonRES_nonThermal_filter, :], group_by), :production_MW => sum => :nonRES_nonThermal_production_MWh),
+            combine(groupby(s_ed.generation[nt_nonvar_filter, :], group_by), :production_MW => sum => :nonRES_nonThermal_production_MWh),
             combine(groupby(s_ed.storage, group_by), [:charge_MW,:discharge_MW] => ((x, y) -> f_storage(x, y)) => AsTable),
             on = group_by
         )
@@ -79,11 +75,17 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
                 :required_energy_reserve_down_MW => :required_energy_reserve_down_uc_MWh
             )
             source_df = s_uc.energy_reserve
-        end 
+        end
+        
         if !isnothing(source_df)
             keys_to_combine = Dict(k => v for (k, v) in keys_to_combine if k in propertynames(s_uc.reserve))
+            keys_to_combine_sub = Dict(k => v for (k, v) in keys_to_combine if k in [:reserve_up_MW, :reserve_down_MW, :energy_reserve_up_MW, :energy_reserve_down_MW])
+            thermal_filter = coalesce.(source_df.r_id .∈ Ref(s_ed.generation_parameters[s_ed.generation_parameters.is_thermal,:r_id]), false)
+            storage_filter = coalesce.(source_df.r_id .∈ Ref(s_ed.storage_parameters.r_id), false)
             leftjoin!(out, combine(groupby(source_df, group_by), keys(keys_to_combine) .=> (x -> sum(skipmissing(x))) .=> values(keys_to_combine)), on = group_by)
-        end 
+            leftjoin!(out, combine(groupby(source_df[thermal_filter,:], group_by), keys(keys_to_combine_sub) .=> (x -> sum(skipmissing(x))) .=> ("thermal_" .* string.(values(keys_to_combine_sub)))), on = group_by)
+            leftjoin!(out, combine(groupby(source_df[storage_filter,:], group_by), keys(keys_to_combine_sub) .=> (x -> sum(skipmissing(x))) .=> ("storage_" .* string.(values(keys_to_combine_sub)))), on = group_by)
+        end
         return out
     end
     
@@ -113,9 +115,13 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
             group_by_uc = intersect([:configuration, :day], group_by)
             out =  leftjoin!(out, calculate_uc_dual_variables(s_uc, group_by_uc), on = group_by_uc) #TODO: check if innerjoin can be used instead of left to generate missing values instead of repetead ones
         end
+        @infiltrate
         return out
-    end 
+    end
+    
+    function calculate_economic_metrics(s_ed,_s_uc, group_by)
 
+    end
     group_by = intersect([:configuration, :day, :iteration, :scenario], propertynames(s_ed.demand))
     gcdi_KPI = calculate_basic_KPI(s_ed, group_by)
     leftjoin!(gcdi_KPI, calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by), on = group_by)

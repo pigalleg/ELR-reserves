@@ -3,10 +3,10 @@ using Gurobi
 include("../unit_commitment/utils.jl")
 include("../pre_processing.jl")
 
-function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve, temportal_weights, mip_gap = 1e-6)
+function construct_empirical_µ(gen_df, storage, reserve, energy_reserve, temportal_weights, mip_gap = 1e-6)
     model = Model(Gurobi.Optimizer)
     set_optimizer_attribute(model, "MIPGap", mip_gap)
-    sets = get_sets(gen_df, loads)
+    sets = get_sets(gen_df)
     T = sets.T
 
     T_incr = copy(T)
@@ -184,7 +184,7 @@ function construct_empirical_µ(gen_df,  loads, storage, reserve, energy_reserve
     return model
 end
 
-function solve_empirical_µ_get_solution(gen_df, loads, storage, required_reserve, required_energy_reserve; temportal_weights = false)
+function solve_empirical_µ_get_solution(gen_df, storage, required_reserve, required_energy_reserve; temportal_weights = false)
     function rename_headers(df, var)
         if size(df, 2) == 4
             keys_to_rename = Dict(:x1 => :r_id, :x2 => :i, :x3 => :t, :y => Symbol(var))
@@ -196,7 +196,7 @@ function solve_empirical_µ_get_solution(gen_df, loads, storage, required_reserv
         return rename(df, keys_to_rename)
     end
 
-    model = construct_empirical_µ(gen_df, loads, storage, required_reserve, required_energy_reserve, temportal_weights)
+    model = construct_empirical_µ(gen_df, storage, required_reserve, required_energy_reserve, temportal_weights)
     optimize!(model)
     variables_to_save = [
         :RESUP, :RESDN, :RESUPDIS, :RESUPCH, :RESDNCH, :RESDNDIS,
@@ -232,14 +232,16 @@ function calculate_mu_t(sol_1_)
 end
 
 function main(input_folder = "../../input/RTS-GMLC_v1.0") # This function has been checked that yelds the right values
-    days = range(1,7)
+    days = range(1,365)
     temportal_weights = false
     mu_t_all = DataFrame()
+
+    gen_df, ____, __, ___, storage_df, required_reserve_, required_energy_reserve_ = generate_deterministic_input_data(input_folder)
     for day in days
-        gen_df, loads_df, random_loads_df, gen_variable_df, storage_df,  = generate_deterministic_input_data(day, input_folder)
-        required_reserve = filter_day(day, CSV.read(joinpath(input_folder, G_UC_DATA, "Reserve.csv"), DataFrame))
-        required_energy_reserve =  filter_day(day, CSV.read(joinpath(input_folder, G_UC_DATA, "Energy reserve.csv"), DataFrame))
-        model, sol_1, sol_2 = solve_empirical_µ_get_solution(gen_df, loads_df, storage_df, required_reserve, required_energy_reserve; temportal_weights = temportal_weights)
+        # loads_df = filter_day(day, loads_df_)
+        required_reserve = filter_day(day, required_reserve_)
+        required_energy_reserve = filter_day(day, required_energy_reserve_)
+        model, sol_1, sol_2 = solve_empirical_µ_get_solution(gen_df, storage_df, required_reserve, required_energy_reserve; temportal_weights = temportal_weights)
         mu_t = calculate_mu_t(sol_1)
         # mu_t = insertcols(mu_t, 1, :rho => rho)
         mu_t = insertcols(mu_t, 1, :day => day)
