@@ -230,6 +230,9 @@ function generate_ed_solutions(;days = nothing, μs = nothing, day_µ_configurat
             )
         else # we assume that the day_µ_configurations_file is provided
             day_µ_configurations = generate_day_µ_configurations(input_folder, day_µ_configurations_file)
+            if !isnothing(days)
+                day_µ_configurations = filter(x -> x[1] in days, day_µ_configurations)
+            end 
         end
         generate_ed_solutions_(day_µ_configurations, input_folder, output_folder; kwargs...)
         generate_post_processing_KPI_files(output_folder, stochastic = false)
