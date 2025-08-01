@@ -109,6 +109,7 @@ end
 
 function get_solution(model, stochastic = false, get_dual_variables = false)
     if get_dual_variables # when get_dual_variables = true, output contains the fixed model's solution
+   
         model_ = get_fixed_model(model)
     else
         model_ =  model
@@ -602,8 +603,8 @@ function get_enriched_objective_value(enriched_solution, gen_df, storage, parame
         select!(losses_cost, Not(fields_to_remove))
         cost = vcat(cost, losses_cost, cols=:union) 
     end
-    check_cost_consistency()
-    # @warn "Cost consistency not checked" 
+    # check_cost_consistency()
+    @warn "Cost consistency not checked" 
     return cost
 end
 

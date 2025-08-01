@@ -286,6 +286,14 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
             variables_to_fix = get_variables_to_fix(uc) 
             variables_to_constrain = get_variables_to_constrain(uc; config...) 
 
+
+            if haskey(uc, :ReservePenalizationCost)
+                extra_OV = value(uc[:ReservePenalizationCost])
+            elseif haskey(uc, :EnergyReservePenalizationCost)
+                extra_OV = value(uc[:EnergyReservePenalizationCost])
+            end
+            set_parameter_value(ed[:extra_OV], extra_OV)
+
             update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; config...)
             update_envelope_parameters(ed, envelope_variables, config[:energy_reserve])
             s_ed[(day,μ_config.key)] = launch_monte_carlo_get_solution(

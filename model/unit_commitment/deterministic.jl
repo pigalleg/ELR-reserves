@@ -5,22 +5,12 @@ using Gurobi
 include("./utils.jl")
 include("../constraints.jl")
 
-function initialize_model(model, mip_gap)
-    set_optimizer(model, Gurobi.Optimizer)
-    set_optimizer_attribute(model, "MIPGap", mip_gap)
-    # set_optimizer_attribute(model, "LogFile", "./output/log_file.txt")
-    # set_optimizer_attribute(model, "mip_rel_gap", mip_gap)
-    # set_optimizer_attribute(ed, "TimeLimit", 60.0)
-    set_optimizer_attribute(model, "OutputFlag", 0)
-    @variable(model, FeasibilityTol in Parameter(get_optimizer_attribute(model, "FeasibilityTol")))
-    @variable(model, MIPGap in Parameter(mip_gap))
-end
-
 
 function DUC(gen_df, mip_gap)
     model = Model()
+    set_solver_attributes(model, mip_gap)
     # model = direct_model(Gurobi.Optimizer())
-    initialize_model(model, mip_gap)
+    # initialize_model(model, mip_gap)
     sets = get_sets(gen_df)
     G = sets.G
     G_thermal = sets.G_thermal
@@ -29,7 +19,6 @@ function DUC(gen_df, mip_gap)
     G_nt_nonvar = sets.G_nt_nonvar
     T = sets.T
     T_red = sets.T_red
-    
     @variable(model, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
     @variable(model, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
     

@@ -1,4 +1,4 @@
-
+# Common constraints between UC and ED models
 
 function add_capacity_constraints(model, gen_df, sets)
     T = sets.T

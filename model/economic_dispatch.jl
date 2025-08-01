@@ -78,7 +78,7 @@ function ED(gen_df, VLOL, VLGEN, mip_gap)
     println("Constructing ED...")
     # Outputs EC by fixing variables of UC
     ed = Model()
-    initialize_model(ed, mip_gap)
+    set_solver_attributes(ed, mip_gap)
 
     sets = get_sets(gen_df)
     G = sets.G
@@ -88,7 +88,6 @@ function ED(gen_df, VLOL, VLGEN, mip_gap)
     G_nt_nonvar = sets.G_nt_nonvar
     T = sets.T
     T_red = sets.T_red
-
     VLOL = convert_to_indexed_vector(VLOL, T)
     VLGEN = convert_to_indexed_vector(VLGEN, T)
     @variable(ed, extra_OV in Parameter(0))
