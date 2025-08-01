@@ -632,12 +632,12 @@ function change_type(df, from, to)
 function solution_to_parquet(s, file_name, file_folder)
     # TODO move to post_processing
     if !isdir(file_folder) mkdir(file_folder) end
-    println("writing...")
+    println("writing $(file_name)")
     for (k,v) in zip(propertynames(s), s)
-      println("$(file_name)_$k")
+    #   println("$(file_name)_$k")
       Parquet2.writefile(joinpath(file_folder, file_name*"_"*string(k)*".parquet"), change_type(change_type(v, Symbol, string), TerminationStatusCode, string))
     end
-    println("...done")
+    # println(" ...done")
   end
 
 function parquet_to_solution(file_name, file_folder, solution_keys=nothing)

@@ -258,6 +258,9 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
     )
     ed = construct_economic_dispatch(gen_df_; config...)
     
+    # Collect background tasks
+    background_tasks = []
+    
     for (day, μ_configs) in days_configurations
         s_uc = Dict()
         s_ed = Dict()
@@ -306,9 +309,20 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
         if write
             if !isdir(output_folder) mkpath(output_folder) end
             folder_path = joinpath(output_folder,"n_$(day)")
-            solution_to_parquet(s_uc, "s_uc", folder_path)
-            solution_to_parquet(s_ed, "s_ed", folder_path)
+            
+            # Launch parquet writing in background threads and collect tasks
+            push!(background_tasks, Threads.@spawn solution_to_parquet(s_uc, "s_uc", folder_path))
+            push!(background_tasks, Threads.@spawn solution_to_parquet(s_ed, "s_ed", folder_path))
         end
+    end
+    
+    # Wait for all background writing tasks to complete before exiting
+    if write
+        println("Waiting for all parquet files to finish writing...")
+        for task in background_tasks
+            wait(task)
+        end
+        println("All parquet files written successfully.")
     end
 end
 
