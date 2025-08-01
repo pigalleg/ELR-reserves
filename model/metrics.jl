@@ -117,6 +117,43 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
         end
         return out
     end
+
+    function calculate_reserve_activation(s_ed, s_uc, group_by, group_by_uc)
+        #TODO: document with equations
+       
+        # Thermal reserve activation
+        thermal_filter_uc = s_uc.generation.r_id .∈ Ref(s_uc.generation_parameters[s_uc.generation_parameters.is_thermal,:r_id])
+        thermal_filter_uc = thermal_filter_uc .&& (s_uc.generation.resource .!= "net_generation")
+        thermal_filter_ed = s_ed.generation.r_id .∈ Ref(s_ed.generation_parameters[s_ed.generation_parameters.is_thermal,:r_id])
+        thermal_filter_ed = thermal_filter_ed .&& (s_ed.generation.resource .!= "net_generation")
+        generation = leftjoin(
+            combine(groupby(s_ed.generation[thermal_filter_ed,:], union(group_by, [:hour])), :production_MW => sum => :production_MW), # hourly time profiles
+            combine(groupby(s_uc.generation[thermal_filter_uc,:], union(group_by_uc, [:hour])), :production_MW => sum => :production_uc_MW),  # hourly time profiles
+            on = union(group_by_uc,[:hour])
+            )
+        generation.thermal_reserve_activation_MW = generation.production_MW .- generation.production_uc_MW
+        generation.thermal_reserve_up_activation_MW = max.(generation.thermal_reserve_activation_MW, 0.0)
+        generation.thermal_reserve_down_activation_MW = max.(-generation.thermal_reserve_activation_MW, 0.0)
+
+        #Storage reserve activation
+        s_ed.storage.net_discharge_MW .= s_ed.storage.discharge_MW .- s_ed.storage.charge_MW
+        s_uc.storage.net_discharge_MW .= s_uc.storage.discharge_MW .- s_uc.storage.charge_MW
+        net_discharge = leftjoin(
+            combine(groupby(s_ed.storage, union(group_by, [:hour])), :net_discharge_MW => (x -> sum(skipmissing(x))) => :net_discharge_MW), # hourly time profiles
+            combine(groupby(s_uc.storage, union(group_by_uc, [:hour])), :net_discharge_MW => (x -> sum(skipmissing(x))) => :net_discharge_uc_MW), # hourly time profiles
+            on = union(group_by_uc,[:hour])
+        )
+        net_discharge.storage_reserve_activation_MW = net_discharge.net_discharge_MW .- net_discharge.net_discharge_uc_MW
+        net_discharge.storage_reserve_up_activation_MW = max.(net_discharge.storage_reserve_activation_MW, 0.0)
+        net_discharge.storage_reserve_down_activation_MW = max.(-net_discharge.storage_reserve_activation_MW, 0.0)
+        return leftjoin(
+            combine(groupby(generation, group_by), [:thermal_reserve_up_activation_MW, :thermal_reserve_down_activation_MW] .=> sum .=> [:thermal_reserve_up_activation_MWh, :thermal_reserve_down_activation_MWh] ), # reduce :hour dimension
+            combine(groupby(net_discharge, group_by), [:storage_reserve_up_activation_MW, :storage_reserve_down_activation_MW] .=> sum .=> [:storage_reserve_up_activation_MWh, :storage_reserve_down_activation_MWh]), # reduce :hour dimension
+            on = group_by
+        )
+        
+    end
+
     group_by = intersect([:configuration, :day, :iteration, :scenario], propertynames(s_ed.demand))
     gcdi_KPI = calculate_basic_KPI(s_ed, group_by)
     leftjoin!(gcdi_KPI, calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by), on = group_by)
@@ -128,12 +165,11 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
     if !isnothing(s_uc)
         group_by_uc = intersect([:configuration, :day], group_by)
         leftjoin!(gcdi_KPI, calculate_uc_KPI(s_uc, group_by_uc), on = group_by_uc)
+        leftjoin!(gcdi_KPI, calculate_reserve_activation(s_ed, s_uc, group_by, group_by_uc), on = group_by)
     end
-
     if :configuration in propertynames(out)
         out = sort(transform(out, :configuration .=> ByRow(x -> parse_configuration_to_mu(x)) .=> :mu), :mu)
     end
-
     return gcdi_KPI
 end
 
@@ -146,9 +182,15 @@ function calculate_adecuacy_gcd_KPI(gcdi_KPI)
         :input_load_uc_MWh => :input_load_uc_MWh, # manually cheked that the average gives back the original value
         :nonRES_nonThermal_production_MWh => :E_nonRES_nonThermal_production_MWh, :storage_charge_MWh => :E_storage_charge_MWh, :storage_discharge_MWh => :E_storage_discharge_MWh, :storage_net_charge_MWh => :E_storage_net_charge_MWh, :SOE_0_MWh => :SOE_0_MWh, :SOE_T_MWh => :E_SOE_T_MWh, :net_SOE_MWh => :E_net_SOE_MWh,
         :reserve_up_uc_MWh => :reserve_up_uc_MWh, :reserve_down_uc_MWh => :reserve_down_uc_MWh, :slack_reserve_up_uc_MWh => :slack_reserve_up_uc_MWh, :slack_reserve_down_uc_MWh => :slack_reserve_down_uc_MWh,
+        :thermal_reserve_up_uc_MWh => :thermal_reserve_up_uc_MWh, :thermal_reserve_down_uc_MWh => :thermal_reserve_down_uc_MWh,
+        :storage_reserve_up_uc_MWh => :storage_reserve_up_uc_MWh, :storage_reserve_down_uc_MWh => :storage_reserve_down_uc_MWh,
         :required_reserve_up_uc_MWh => :required_reserve_up_uc_MWh, :required_reserve_down_uc_MWh => :required_reserve_down_uc_MWh,
         :energy_reserve_up_uc_MWh => :energy_reserve_up_uc_MWh, :energy_reserve_down_uc_MWh => :energy_reserve_down_uc_MWh, :slack_energy_reserve_up_uc_MWh => :slack_energy_reserve_up_uc_MWh, :slack_energy_reserve_down_uc_MWh => :slack_energy_reserve_down_uc_MWh, 
+        :thermal_energy_reserve_up_uc_MWh => :thermal_energy_reserve_up_uc_MWh, :thermal_energy_reserve_down_uc_MWh => :thermal_energy_reserve_down_uc_MWh,
+        :storage_energy_reserve_up_uc_MWh => :storage_energy_reserve_up_uc_MWh, :storage_energy_reserve_down_uc_MWh => :storage_energy_reserve_down_uc_MWh,
         :required_energy_reserve_up_uc_MWh => :required_energy_reserve_up_uc_MWh, :required_energy_reserve_down_uc_MWh => :required_energy_reserve_down_uc_MWh,
+        :storage_reserve_up_activation_MWh => :E_storage_reserve_up_activation_MWh, :storage_reserve_down_activation_MWh => :E_storage_reserve_down_activation_MWh,
+        :thermal_reserve_up_activation_MWh => :E_thermal_reserve_up_activation_MWh, :thermal_reserve_down_activation_MWh => :E_thermal_reserve_down_activation_MWh,
         :objective_value => :EOV, :objective_value_uc => :OV_uc, :OPEX => :EOPEX, :OPEX_uc => :OPEX_uc, :redispatch_cost => :E_redispatch_cost, :LOL_cost => :EENS_cost, :LGEN_cost => :ELGEN_cost,
         :reserve_cost_uc => :reserve_cost_uc, :slack_reserve_up_cost_uc => :slack_reserve_up_cost_uc, :slack_reserve_down_cost_uc => :slack_reserve_down_cost_uc,
         :energy_reserve_cost_uc => :energy_reserve_cost_uc, :slack_energy_reserve_up_cost_uc => :slack_energy_reserve_up_cost_uc, :slack_energy_reserve_down_cost_uc => :slack_energy_reserve_down_cost_uc,

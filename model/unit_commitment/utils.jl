@@ -1,5 +1,27 @@
-include("./config.jl")
+using JuMP: @variable
 using JuMP.Containers: DenseAxisArray, SparseAxisArray
+include("./config.jl")
+
+function copy_initialize(model_)
+  model = JuMP.copy(model_)
+  set_solver_attributes(model)
+  return model
+end
+
+function set_solver_attributes(model, mip_gap = nothing)
+    set_optimizer(model, Gurobi.Optimizer)
+    if !isnothing(mip_gap)
+        set_optimizer_attribute(model, "MIPGap", mip_gap)
+        @variable(model, MIPGap in Parameter(mip_gap))
+    else
+        set_optimizer_attribute(model, "MIPGap", parameter_value(model[:MIPGap]))
+    end
+    # set_optimizer_attribute(model, "LogFile", "./output/log_file.txt")
+    # set_optimizer_attribute(model, "mip_rel_gap", mip_gap)
+    # set_optimizer_attribute(model, "TimeLimit", 10.0)
+    set_optimizer_attribute(model, "OutputFlag", 0)
+    @variable(model, FeasibilityTol in Parameter(get_optimizer_attribute(model, "FeasibilityTol")))
+end
 
 function convert_to_matrix(df, row_key, column_key, value_key)
     return  Matrix(unstack(df, row_key, column_key, value_key)[:,Not(row_key)])
