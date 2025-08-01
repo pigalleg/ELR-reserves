@@ -68,19 +68,20 @@ function value_to_df_2dim(var)
     return solution
 end
 
-function get_fixed_model(model)
+function get_fixed_model(model_, copy_model)
     # TODO: this function should be called in solve_economic_dispatch_ and solve_unit_commitment rather than by get_solution
     # the main problem is that get_solution is called in main
-    # Logging.disable_logging(Logging.Warn)
-    model_ = JuMP.copy(model) # copy is needed because the original model might be used in the next Montecarlo iteration
-    set_optimizer(model_, Gurobi.Optimizer)
-    set_optimizer_attribute(model_, "OutputFlag", 0)
-    set_optimizer_attribute(model_, "MIPGap", get_optimizer_attribute(model,"MIPGap")) 
-    optimize!(model_) # needs to be solved after copying. Check: objective_value(model_) == objective_value(model)
-    fix_discrete_variables(model_) #https://jump.dev/JuMP.jl/stable/api/JuMP/#JuMP.fix_discrete_variables
+
+    if copy_model
+        model = copy_initialize(model_)
+    else
+        model = model_
+    end
+    optimize!(model) # needs to be solved after copying. Check: objective_value(model_) == objective_value(model)
+    fix_discrete_variables(model) #https://jump.dev/JuMP.jl/stable/api/JuMP/#JuMP.fix_discrete_variables
     # Gurobi.GRBconverttofixed(backend(model_).optimizer.model) # https://docs.gurobi.com/projects/optimizer/en/current/reference/c/solving.html#c.GRBconverttofixed
-    optimize!(model_) # needs to be re-solved after fixing
-    return model_
+    optimize!(model) # needs to be re-solved after fixing
+    return model
 end
 
 function get_nonfeasbile_model_information(model)
@@ -107,10 +108,11 @@ function merge_solutions(solutions::Dict, merge_keys = [:iteration])
     return NamedTuple(k => vcat(aux[k]..., cols = :union) for k in keys(aux))
 end
 
-function get_solution(model, stochastic = false, get_dual_variables = false)
+function get_solution(model, stochastic = false, get_dual_variables = false, copy_model = true)
+
     if get_dual_variables # when get_dual_variables = true, output contains the fixed model's solution
    
-        model_ = get_fixed_model(model)
+        model_ = get_fixed_model(model, copy_model)
     else
         model_ =  model
     end
@@ -135,14 +137,14 @@ function get_solution_dual_variables(model, stochastic) # output's keys are of t
     end
 end
 
-function get_model_solution(model, gen_df, gen_variable; loads = nothing, scenarios = nothing, config...)
+function get_model_solution(model, gen_df, gen_variable; copy_model = true, loads = nothing, scenarios = nothing, config...)
     #TODO: loads not used 
     # Model is either UC or ED or SUC
     get_dual_variables = get(config, :get_dual_variables, g_dual_variables)
     storage = get(config, :storage, g_storage)
     enriched_solution = get(config, :enriched_solution, g_enriched_solution)
     stochastic = !isnothing(scenarios)
-    sets = get_sets(gen_df)
+    # sets = get_sets(gen_df)
     parameters_for_enriching = (MIPGap = parameter_value(model[:MIPGap]),)
     if haskey(model, :VRESERVE) # UC
         parameters_for_enriching = merge(parameters_for_enriching, (VRESERVE = parameter_value(model[:VRESERVE]),))
@@ -175,7 +177,7 @@ function get_model_solution(model, gen_df, gen_variable; loads = nothing, scenar
         else
             loads_ = loads  
         end
-        return enrich_dfs(get_solution(model, stochastic, get_dual_variables), gen_df, loads_, gen_variable, storage, parameters_for_enriching, get_objective_function) 
+        return enrich_dfs(get_solution(model, stochastic, get_dual_variables, copy_model), gen_df, loads_, gen_variable, storage, parameters_for_enriching, get_objective_function) 
     else
         return get_solution(model, stochastic, get_dual_variables)
     end

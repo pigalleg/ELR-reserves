@@ -16,11 +16,14 @@ function set_solver_attributes(model, mip_gap = nothing)
     else
         set_optimizer_attribute(model, "MIPGap", parameter_value(model[:MIPGap]))
     end
+    # Logging.disable_logging(Logging.Warn)
     # set_optimizer_attribute(model, "LogFile", "./output/log_file.txt")
     # set_optimizer_attribute(model, "mip_rel_gap", mip_gap)
     # set_optimizer_attribute(model, "TimeLimit", 10.0)
     set_optimizer_attribute(model, "OutputFlag", 0)
-    @variable(model, FeasibilityTol in Parameter(get_optimizer_attribute(model, "FeasibilityTol")))
+    if !haskey(model, :FeasibilityTol)
+        @variable(model, FeasibilityTol in Parameter(get_optimizer_attribute(model, "FeasibilityTol")))
+    end
 end
 
 function convert_to_matrix(df, row_key, column_key, value_key)

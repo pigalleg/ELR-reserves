@@ -78,8 +78,7 @@ function ED(gen_df, VLOL, VLGEN, mip_gap)
     println("Constructing ED...")
     # Outputs EC by fixing variables of UC
     ed = Model()
-    set_solver_attributes(ed, mip_gap)
-
+    # set_solver_attributes(ed, mip_gap)
     sets = get_sets(gen_df)
     G = sets.G
     G_thermal = sets.G_thermal
@@ -90,12 +89,13 @@ function ED(gen_df, VLOL, VLGEN, mip_gap)
     T_red = sets.T_red
     VLOL = convert_to_indexed_vector(VLOL, T)
     VLGEN = convert_to_indexed_vector(VLGEN, T)
+    @variable(ed, MIPGap in Parameter(mip_gap))
     @variable(ed, extra_OV in Parameter(0))
     @variable(ed, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
     @variable(ed, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
     @variable(ed, VLOL[t in keys(VLOL)] in Parameter(VLOL[t])) # for post-processing purposes
     @variable(ed, VLGEN[t in keys(VLGEN)] in Parameter(VLGEN[t])) # for post-processing purposes
-     @variables(ed, begin
+    @variables(ed, begin
         GEN[G, T]  >= 0 # generation
         COMMIT[G_thermal, T], Bin # commitment status (Bin=binary)
         START[G_thermal, T], Bin  # startup decision
@@ -350,11 +350,11 @@ function solve_economic_dispatch_(ed, gen_df, loads, gen_variable; kwargs...)
         return get_nonfeasbile_model_information(ed)
     end
     println("done")
-    return get_model_solution(ed, gen_df, gen_variable; loads = loads, kwargs...)
+    return get_model_solution(ed, gen_df, gen_variable; loads = loads, copy_model = false, kwargs...)
 end
 
 
-function launch_monte_carlo_get_solution(ed, gen_df, loads, gen_variable; kwargs...)
+function launch_monte_carlo_get_solution(ed_, gen_df, loads, gen_variable; kwargs...)
     max_iterations = get(kwargs, :max_iterations, g_max_iterations)
     solutions = Dict()
     kwargs = Dict(kwargs)
@@ -362,6 +362,7 @@ function launch_monte_carlo_get_solution(ed, gen_df, loads, gen_variable; kwargs
     for k in first(propertynames(loads[!, Not([:hour,:day])]), max_iterations)
         println("")
         println("Montecarlo iteration: $k")
+        ed = copy_initialize(ed_)
         gen_df_k, loads_df_k, gen_variable_k = pre_process_load_gen_variable(gen_df, rename(loads[!,[:hour,k]], k=>:demand), gen_variable) # remove negative net load to convert it into net generation asset
         update_parameter_value(ed, :p_DEMAND, loads_df_k[:,:demand])
         update_parameter_value(ed, :p_MAX_GEN, convert_to_matrix(gen_variable_k, :r_id, :hour, :max_production_mw))
