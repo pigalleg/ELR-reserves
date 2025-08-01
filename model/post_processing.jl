@@ -603,8 +603,8 @@ function get_enriched_objective_value(enriched_solution, gen_df, storage, parame
         select!(losses_cost, Not(fields_to_remove))
         cost = vcat(cost, losses_cost, cols=:union) 
     end
-    # check_cost_consistency()
-    @warn "Cost consistency not checked" 
+    check_cost_consistency()
+    # @warn "Cost consistency not checked" 
     return cost
 end
 
