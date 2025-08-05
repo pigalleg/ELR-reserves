@@ -26,7 +26,7 @@ g_constrain_SOE_by_envelopes = false
 g_constrain_redispatch_by_energy = true
 
 # update_dispatch_restrictions
-g_constrain_dispatch = false
+g_constrain_redispatch = false
 g_remove_variables_from_objective = false
  # If true, the reserve variables are constrained by the energy reserve variables
 
