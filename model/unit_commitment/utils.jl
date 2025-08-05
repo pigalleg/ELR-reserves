@@ -2,6 +2,13 @@ using JuMP: @variable
 using JuMP.Containers: DenseAxisArray, SparseAxisArray
 include("./config.jl")
 
+function is_non_feasible(model)
+  # We consider infeasible only when terminaton_status = infeasible.
+  # For instance, for time_limit reached, the model is not infeasible, nor within mip_gap but still has a solution, we therefore try to recover it
+  return (JuMP.termination_status(model) == MOI.INFEASIBLE)
+end
+
+
 function copy_initialize(model_)
   model = JuMP.copy(model_)
   set_solver_attributes(model)
@@ -19,8 +26,8 @@ function set_solver_attributes(model, mip_gap = nothing)
     # Logging.disable_logging(Logging.Warn)
     # set_optimizer_attribute(model, "LogFile", "./output/log_file.txt")
     # set_optimizer_attribute(model, "mip_rel_gap", mip_gap)
-    # set_optimizer_attribute(model, "TimeLimit", 10.0)
-    set_optimizer_attribute(model, "OutputFlag", 0)
+    set_optimizer_attribute(model, "TimeLimit", 10.0)
+    set_optimizer_attribute(model, "OutputFlag", 1)
     if !haskey(model, :FeasibilityTol)
         @variable(model, FeasibilityTol in Parameter(get_optimizer_attribute(model, "FeasibilityTol")))
     end

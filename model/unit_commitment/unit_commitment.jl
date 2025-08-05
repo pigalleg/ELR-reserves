@@ -93,3 +93,20 @@ function construct_unit_commitment(gen_df; scenarios, kwargs...)
 end
 
 
+
+function solve_get_solution(model, gen_df, loads, gen_variable; kwargs...)
+    # Solves the unit commitment model and returns the solution
+    println("Solving UC...")
+    optimize!(model)
+    if is_non_feasible(model)
+        print("model not solved or feasible.")
+        return get_nonfeasbile_model_information(model)
+    end
+    return get_model_solution(
+        model,
+        gen_df,
+        gen_variable;
+        loads = loads,
+        kwargs...
+    )
+end

@@ -71,13 +71,17 @@ end
 function get_fixed_model(model_, copy_model)
     # TODO: this function should be called in solve_economic_dispatch_ and solve_unit_commitment rather than by get_solution
     # the main problem is that get_solution is called in main
-
+    if termination_status(model_) != MOI.OPTIMAL
+        println("Model is not optimal. Returning the original model.")
+        return model_
+    end
     if copy_model
         model = copy_initialize(model_)
+        optimize!(model) # needs to be solved after copying. Check: objective_value(model_) == objective_value(model)
     else
         model = model_
     end
-    optimize!(model) # needs to be solved after copying. Check: objective_value(model_) == objective_value(model)
+    
     fix_discrete_variables(model) #https://jump.dev/JuMP.jl/stable/api/JuMP/#JuMP.fix_discrete_variables
     # Gurobi.GRBconverttofixed(backend(model_).optimizer.model) # https://docs.gurobi.com/projects/optimizer/en/current/reference/c/solving.html#c.GRBconverttofixed
     optimize!(model) # needs to be re-solved after fixing
@@ -88,9 +92,9 @@ function get_nonfeasbile_model_information(model)
     # Output is a NamedTuple with scalar information about the model. The 'scalar' field is also present on feasible models.
     return (
         scalar = DataFrame(
-            termination_status = string(termination_status(model)),
-            primal_status = string(primal_status(model)),
-            dual_Status = string(dual_status(model))
+            termination_status_discrete_model = termination_status(model),# string(termination_status(model)),
+            primal_status_discrete_model = primal_status(model), #string(primal_status(model)),
+            dual_status_discrete_model = dual_status(model) #string(dual_status(model))
         ),      
     )
 end
@@ -109,18 +113,31 @@ function merge_solutions(solutions::Dict, merge_keys = [:iteration])
 end
 
 function get_solution(model, stochastic = false, get_dual_variables = false, copy_model = true)
-
+    # We extract values before fixing the model because if copy_model = false, then the model changes and has no relative gap.
+    scalar_df  = DataFrame(
+        objective_value_discrete_model = objective_value(model),
+        termination_status_discrete_model = termination_status(model),
+        primal_status_discrete_model = primal_status(model),
+        dual_status_discrete_model = dual_status(model),
+        relative_gap_discrete_model = relative_gap(model),
+        solve_time = solve_time(model))
+    
     if get_dual_variables # when get_dual_variables = true, output contains the fixed model's solution
-   
         model_ = get_fixed_model(model, copy_model)
     else
         model_ =  model
     end
+
+    scalar_df.objective_value .= objective_value(model_)
+    scalar_df.termination_status .= termination_status(model_)
+    scalar_df.primal_status .= primal_status(model_)
+    scalar_df.dual_status .= dual_status(model_)
+    scalar_df.OPEX .=  value(model_[:OPEX])
     return merge(
         get_solution_variables(model_, stochastic),
         get_solution_dual_variables(model_, stochastic),
-        (scalar = DataFrame(objective_value = objective_value(model_), termination_status = termination_status(model_), OPEX = value(model_[:OPEX])),),
-    )
+        (scalar = scalar_df,),
+    )   
 end
 
 function get_solution_variables(model, stochastic)
@@ -625,24 +642,32 @@ function get_storage_parameters(storage)
     return rename(storage[!,union(FIELD_FOR_ENRICHING, parameters_to_get)],[:existing_cap_mw, :max_energy_mwh] .=> [:P_max_MW, :SOE_max_MWh])
 end
 
-function change_type(df, from, to)
-    return mapcols(x -> eltype(x) == from ? to.(x) : x, df)
+function change_type(df, froms, tos)
+    out = df
+    for (from,to) in zip(froms,tos)
+        out = mapcols(x -> eltype(x) == from ? to.(x) : x, out)
+    end
+    return out
   end
 
 function solution_to_parquet(s, file_name, file_folder)
-    # TODO move to post_processing
-    if !isdir(file_folder) mkdir(file_folder) end
-    println("writing $(file_name)")
+    if any(!isempty, values(s)) && !isdir(file_folder)
+        mkdir(file_folder) #  Create the folder if there is at least one nonempty df in values(s)
+    end
+    # if !isdir(file_folder) mkdir(file_folder) end
+    # println("writing $(file_name)")
+    println("writing $(file_folder)/$(file_name)")
     for (k,v) in zip(propertynames(s), s)
-    #   println("$(file_name)_$k")
-      Parquet2.writefile(joinpath(file_folder, file_name*"_"*string(k)*".parquet"), change_type(change_type(v, Symbol, string), TerminationStatusCode, string))
+        if isempty(v)
+            continue
+        end
+        Parquet2.writefile(joinpath(file_folder, file_name*"_"*string(k)*".parquet"), change_type(v, [Symbol, TerminationStatusCode, ResultStatusCode, Any], [string, string, string, string]))
     end
     # println(" ...done")
   end
 
 function parquet_to_solution(file_name, file_folder, solution_keys=nothing)
-    # TODO 1 convert to TerminationStatusCode
-    # TODO 2 move to post_processing
+    # TODO convert to TerminationStatusCode and ResultStatusCode
     if isnothing(solution_keys)
         solution_keys = SOLUTION_KEYS
     end
@@ -651,4 +676,12 @@ function parquet_to_solution(file_name, file_folder, solution_keys=nothing)
     aux = [read_parquet_and_convert(joinpath(file_folder, file_name*"_"*string(k)*".parquet")) for k in keys]
     println("...done")
     return NamedTuple(keys .=> aux)
+end
+
+function filter_infeasible_solutions(s)
+    # We make use of the fact that only s.scalar has infeasible solutions
+    # Returns feasible, infeasible solutions
+    # Infeasible solutions have only scalar field
+    filter_ = s.scalar.termination_status .== MOI.INFEASIBLE .|| isnothing.(s.scalar.termination_status) # WARNING: this condition must be aligned with unit_commitment.utils.is_non_feasible()
+    return NamedTuple(k => k != :scalar ? v :  v[.!filter_, :] for (k,v) in pairs(s)), NamedTuple{(:scalar,)}((s.scalar[filter_, :],))
 end
