@@ -244,8 +244,9 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
     
     add_to_config = Dict(
         :max_iterations => get(kwargs, :max_iterations, g_max_iterations),
-        :constrain_dispatch => get(kwargs, :constrain_dispatch, g_constrain_dispatch),
+        :constrain_redispatch => get(kwargs, :constrain_redispatch, g_constrain_redispatch),
         :thermal_reserve =>  get(kwargs, :thermal_reserve, g_thermal_reserve),
+        :constrain_redispatch_by_energy =>get(kwargs, :constrain_redispatch_by_energy, g_constrain_redispatch_by_energy)
     )
    
     gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve_, required_energy_reserve_ = generate_deterministic_input_data(input_folder)
@@ -303,7 +304,7 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
                     ed,
                     get_envelope_variables(uc),
                     config[:energy_reserve])
-                    
+
                 s_ed[(day,μ_config.key)] = launch_monte_carlo_get_solution(
                     ed,
                     gen_df,

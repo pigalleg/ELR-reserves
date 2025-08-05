@@ -141,10 +141,15 @@ end
 
 function update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; kwargs...)
     bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, g_bidirectional_storage_reserve)
-    constrain_dispatch = get(kwargs, :constrain_dispatch, g_constrain_dispatch)
+    constrain_redispatch = get(kwargs, :constrain_redispatch, g_constrain_redispatch)
     remove_variables_from_objective = get(kwargs, :remove_variables_from_objective, g_remove_variables_from_objective)
-    constrain_by_energy =  reserve_variables[:res_up_var] == :ERESUP
-    constrain_decision_variables(ed, reserve_variables, variables_to_constrain, constrain_dispatch, constrain_by_energy, bidirectional_storage_reserve)
+    if ndims(reserve_variables[:res_up_var_value]) == 2
+        print("Setting constrain_redispatch_by_energy = false")
+        constrain_redispatch_by_energy = false
+    else
+        constrain_redispatch_by_energy = get(kwargs, :constrain_redispatch_by_energy, g_constrain_redispatch_by_energy)
+    end
+    constrain_decision_variables(ed, reserve_variables, variables_to_constrain, constrain_redispatch, constrain_redispatch_by_energy, bidirectional_storage_reserve)
     fix_decision_variables(ed, variables_to_fix, remove_variables_from_objective)
 end
 
@@ -153,7 +158,7 @@ function update_envelope_parameters(model, envelope_variables, energy_envelope)
         p_SOEUP = envelope_variables[1][2]
         p_SOEDN = envelope_variables[2][2]
     else
-        # For energy reserves, we reduce the dimension of the envelopes ESOEUP (envelope_variables[1][2]) and ESOEDN (envelope_variables[2][2]) in oneby taking max(ESOEUP[s,:,t]) and min(ESOEDN[s,:,t]). This operation is not supported natively by DenseAxisArray, so we convert to DataFrame and then a Matrix
+        # For energy reserves, we reduce the dimension of the envelopes ESOEUP (envelope_variables[1][2]) and ESOEDN (envelope_variables[2][2]) by one by taking max(ESOEUP[s,:,t]) and min(ESOEDN[s,:,t]). This operation is not supported natively by DenseAxisArray, so we convert to DataFrame and then a Matrix
         p_SOEUP = transform(value_to_df_(envelope_variables[1][2]))
         p_SOEUP = combine(groupby(p_SOEUP,[:r_id,:hour]), :value => maximum, renamecols = false) # maximum value for each r_id and hour
         p_SOEUP = convert_to_matrix(p_SOEUP, :r_id, :hour, :value) # convert to matrix
@@ -175,13 +180,12 @@ function constrain_decision_variables(model, reserve_variables, variables_to_con
     if constrain_dispatch # assumes either ERESUP or RESUP exists
         constrain_dispatch_variables_according_to_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; reserve_variables...)
     end
-    constraint_dispatch_variables_with_no_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; reserve_variables...) # By default, units not offering reserve will have their dispatch fixed.
+    constraint_dispatch_variables_with_no_reserve(model, bidirectional_storage_reserve, variables_to_constrain; reserve_variables...) # By default, units not offering reserve will have their dispatch fixed.
 end
 
-function constraint_dispatch_variables_with_no_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; kwargs...)
-    function fix_variables_to_value(var_name, var_value, res_vars_value, constrain_by_energy)
-    
-        G = [constrain_by_energy ? [g for (g,j,t) in eachindex(res_var)] : axes(res_var)[1] for res_var in res_vars_value] # We take the set of assets that have reserve or energy reserve (res_vars) procured
+function constraint_dispatch_variables_with_no_reserve(model, bidirectional_storage_reserve, variables_to_constrain; kwargs...)
+    function fix_variables_to_value(var_name, var_value, res_vars_value)
+        G = [ndims(res_var) == 3 ? [g for (g,j,t) in eachindex(res_var)] : axes(res_var)[1] for res_var in res_vars_value] # We take the set of assets that have reserve or energy reserve (res_vars) procured
         G = reduce(intersect, union(G, [axes(var_value)[1]])) # We also intersect with the set of assets belonging to var
         G_to_fix = setdiff(axes(var_value)[1], G)
         model_var = model[var_name]
@@ -204,13 +208,13 @@ function constraint_dispatch_variables_with_no_reserve(model, bidirectional_stor
     end
     for (var_name, var_value) in variables_to_constrain
         if var_name in gen_logic_group
-            fix_variables_to_value(var_name, var_value, [kwargs[:res_up_var_value], kwargs[:res_dn_var_value]], constrain_by_energy)
+            fix_variables_to_value(var_name, var_value, [kwargs[:res_up_var_value], kwargs[:res_dn_var_value]])
         elseif var_name in dis_logic_group
-            fix_variables_to_value(var_name, var_value, [kwargs[:res_up_dis_var_value], kwargs[:res_dn_dis_var_value]], constrain_by_energy)
+            fix_variables_to_value(var_name, var_value, [kwargs[:res_up_dis_var_value], kwargs[:res_dn_dis_var_value]])
         elseif var_name in ch_logic_group
-            fix_variables_to_value(var_name, var_value, [kwargs[:res_dn_ch_var_value], kwargs[:res_up_ch_var_value]], constrain_by_energy)
+            fix_variables_to_value(var_name, var_value, [kwargs[:res_dn_ch_var_value], kwargs[:res_up_ch_var_value]])
         elseif var_name in ch_logic_group_2
-            fix_variables_to_value(var_name, var_value, [kwargs[:res_dn_var_value], kwargs[:res_up_var_value]], constrain_by_energy)
+            fix_variables_to_value(var_name, var_value, [kwargs[:res_dn_var_value], kwargs[:res_up_var_value]])
         end 
     end
 end
@@ -219,7 +223,7 @@ function constrain_dispatch_variables_according_to_reserve(model, bidirectional_
     #TODO: declare following constraints during the ED construction and update them through parameters instead of redefining them at each loop.
     # Dispatch constrained based on the procured reserve or energy reserve at the UC stage
     # Function fixes up to three variable types: :GEN, :CH and :DIS
-    # If Constrain_by_energy= true, integral of redispatch in [j,t] is constrained by the respective energy reserve term. Otherwise, constraints are pointwise.
+    # If constrain_by_energy= true, integral of redispatch in [j,t] is constrained by the respective energy reserve term. Otherwise, constraints are pointwise.
     function constrain_production_variables(model, var_name, var_value, res_up_var_name, res_up_var_value, constrain_by_energy; lower_bound = false)
         # This same function is used to constraints :GEN, :CH and :DIS variables 
         T = axes(var_value)[2]
@@ -231,14 +235,22 @@ function constrain_dispatch_variables_according_to_reserve(model, bidirectional_
             remove_variable_constraint(model, name, true) # remove previous constraint if exists
         end
         if !constrain_by_energy
-            G = intersect(axes(res_up_var_value)[1], axes(var_value)[1])
-            model[name] = @constraint(model, [g in G, t in T], 
-                c*model_var[g,t] <= c*var_value[g,t] + res_up_var_value[g,t]
-            )
+            if ndims(res_up_var_value) == 2
+                G = intersect(axes(res_up_var_value)[1], axes(var_value)[1])
+                model[name] = @constraint(model, [g in G, t in T], 
+                    c*model_var[g,t] <= c*var_value[g,t] + res_up_var_value[g,t]
+                )
+            else # else is 3
+                G = [g for (g,j,t) in eachindex(res_up_var_value)]
+                G = intersect(G, axes(var_value)[1])
+                model[name] = @constraint(model, [g in G, t in T], 
+                    c*model_var[g,t] <= c*var_value[g,t] + res_up_var_value[g,t,t]
+                )
+            end
             for g in G, t in T # important to identify constraints for deletion at each loop
                 set_name(model[name][g,t], string(name)*"[$g,$t]")
             end
-        else
+        else # constraint by power 
             G = [g for (g,j,t) in eachindex(res_up_var_value)]
             G = intersect(G, axes(var_value)[1])
             model[name] = @constraint(model,[g in G, j in T, t in T; j <= t],
