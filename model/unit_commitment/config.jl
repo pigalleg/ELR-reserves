@@ -23,6 +23,7 @@ g_VLGEN = 30 # <- 0
 
 #construct_economic_dispatch
 g_constrain_SOE_by_envelopes = false
+g_constrain_redispatch_by_energy = true
 
 # update_dispatch_restrictions
 g_constrain_dispatch = false
