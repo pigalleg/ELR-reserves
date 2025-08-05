@@ -97,7 +97,6 @@ function generate_post_processing_KPI_files(folder_path; stochastic = false, fol
             s_ed = merge_solutions_df("s_suc", solution_folders, folder_path)
 
         end
-
         if haskey(s_ed, :demand) # if solutions have converged, then this key should be present
             group_by =  intersect([:configuration, :day, :iteration, :scenario], propertynames(s_ed.demand)) # used only for checking
             push!(aux, calculate_adecuacy_gcdi_KPI(s_ed, s_uc))
@@ -274,30 +273,44 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
             gen_df, loads_df, gen_variable_df = pre_process_load_gen_variable(gen_df_, loads_df, gen_variable_df)
             μ_up, μ_dn = pre_process_μ(μ_config.value.up, μ_config.value.down)
 
-            update_daily_data(uc, loads_df, gen_variable_df, storage_df, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
-            optimize!(uc)
-            s_uc[(day,μ_config.key)] = get_model_solution(
+            update_daily_data(
+                uc,
+                loads_df,
+                gen_variable_df,
+                storage_df,
+                μ_up,
+                μ_dn,
+                required_reserve,
+                required_energy_reserve,
+                energy_reserve)
+
+            s_uc[(day,μ_config.key)] = solve_get_solution(
                 uc,
                 gen_df,
+                loads_df,
                 gen_variable_df;
-                loads = loads_df,
-                config...
-            )
+                config...)
 
-            reserve_variables = get_reserves_variables(uc) 
-            envelope_variables = get_envelope_variables(uc)
-            variables_to_fix = get_variables_to_fix(uc) 
-            variables_to_constrain = get_variables_to_constrain(uc; config...) 
+            if !is_non_feasible(uc)
+                update_dispatch_restrictions(
+                    ed,
+                    get_reserves_variables(uc),
+                    get_variables_to_constrain(uc; config...),
+                    get_variables_to_fix(uc);
+                    config...)
 
-            update_dispatch_restrictions(ed, reserve_variables, variables_to_constrain, variables_to_fix; config...)
-            update_envelope_parameters(ed, envelope_variables, config[:energy_reserve])
-            s_ed[(day,μ_config.key)] = launch_monte_carlo_get_solution(
-                ed,
-                gen_df,
-                random_loads_df,
-                gen_variable_df;
-                config...
-            )
+                update_envelope_parameters(
+                    ed,
+                    get_envelope_variables(uc),
+                    config[:energy_reserve])
+                    
+                s_ed[(day,μ_config.key)] = launch_monte_carlo_get_solution(
+                    ed,
+                    gen_df,
+                    random_loads_df,
+                    gen_variable_df;
+                    config...)
+            end
         end
         s_ed = merge_solutions(s_ed, [:day, :configuration])
         s_uc = merge_solutions(s_uc, [:day, :configuration])
@@ -307,12 +320,18 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
             )
         end
         if write
+            # s_uc and s_ec might have nonfeasible nonconverged solutions, so we write them only if they are feasible and make a different folder for these ones.
+            s_uc, n_s_uc = filter_infeasible_solutions(s_uc)
+            s_ed, n_s_ed = filter_infeasible_solutions(s_ed)
             if !isdir(output_folder) mkpath(output_folder) end
+            if !isdir(joinpath(output_folder, "infeasible")) mkpath(joinpath(output_folder, "infeasible")) end
             folder_path = joinpath(output_folder,"n_$(day)")
-            
+            folder_path_infeasible = joinpath(output_folder, "infeasible", "n_$(day)")
             # Launch parquet writing in background threads and collect tasks
             push!(background_tasks, Threads.@spawn solution_to_parquet(s_uc, "s_uc", folder_path))
             push!(background_tasks, Threads.@spawn solution_to_parquet(s_ed, "s_ed", folder_path))
+            push!(background_tasks, Threads.@spawn solution_to_parquet(n_s_uc, "s_uc", folder_path_infeasible))
+            push!(background_tasks, Threads.@spawn solution_to_parquet(n_s_ed, "s_ed", folder_path_infeasible))
         end
     end
     

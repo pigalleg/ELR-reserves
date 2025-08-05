@@ -345,7 +345,7 @@ end
 function solve_economic_dispatch_(ed, gen_df, loads, gen_variable; kwargs...)
     print("Solving ED...")
     optimize!(ed)
-    if !is_solved_and_feasible(ed)
+    if is_non_feasible(ed)
         print("model not solved or feasible.")
         return get_nonfeasbile_model_information(ed)
     end
