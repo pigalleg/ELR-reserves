@@ -362,7 +362,7 @@ function solve_economic_dispatch_(ed, gen_df, loads, gen_variable; kwargs...)
         return get_nonfeasbile_model_information(ed)
     end
     println("done")
-    return get_model_solution(ed, gen_df, gen_variable; loads = loads, copy_model = false, kwargs...)
+    return get_model_solution(ed, gen_df, gen_variable; loads = loads, copy_model = false, kwargs...) #  Model is not copied because is it already copied in parent function
 end
 
 
