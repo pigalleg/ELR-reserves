@@ -71,8 +71,8 @@ end
 function get_fixed_model(model_, copy_model)
     # TODO: this function should be called in solve_economic_dispatch_ and solve_unit_commitment rather than by get_solution
     # the main problem is that get_solution is called in main
-    if termination_status(model_) != MOI.OPTIMAL
-        println("Model is not optimal. Returning the original model.")
+    if is_non_feasible(model_)
+        println("Model is not feasible. Returning the original model.")
         return model_
     end
     if copy_model
@@ -81,10 +81,14 @@ function get_fixed_model(model_, copy_model)
     else
         model = model_
     end
-    
-    fix_discrete_variables(model) #https://jump.dev/JuMP.jl/stable/api/JuMP/#JuMP.fix_discrete_variables
-    # Gurobi.GRBconverttofixed(backend(model_).optimizer.model) # https://docs.gurobi.com/projects/optimizer/en/current/reference/c/solving.html#c.GRBconverttofixed
-    optimize!(model) # needs to be re-solved after fixing
+    try
+        fix_discrete_variables(model) #https://jump.dev/JuMP.jl/stable/api/JuMP/#JuMP.fix_discrete_variables
+        # Gurobi.GRBconverttofixed(backend(model_).optimizer.model) # https://docs.gurobi.com/projects/optimizer/en/current/reference/c/solving.html#c.GRBconverttofixed
+        optimize!(model) # needs to be re-solved after fixing
+    catch e
+        @warn "Failed to fix discrete variables: $(e). Returning original model without fixing discrete variables."
+    end
+    optimize!(model) # We optimize even if catch activates because the model losses optimizations status.
     return model
 end
 
@@ -123,7 +127,7 @@ function get_solution(model, stochastic = false, get_dual_variables = false, cop
         solve_time = solve_time(model))
     
     if get_dual_variables # when get_dual_variables = true, output contains the fixed model's solution
-        model_ = get_fixed_model(model, copy_model)
+        model_ = get_fixed_model(model, copy_model) # it can happen the fixing process fails. The model then returns the initial model. No dual variables will be extracted in the solution.
     else
         model_ =  model
     end
