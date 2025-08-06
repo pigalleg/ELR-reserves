@@ -239,16 +239,16 @@ function generate_ed_solutions(;days = nothing, μs = nothing, day_µ_configurat
 end
 
 function generate_ed_solutions_(days_configurations, input_folder, output_folder; kwargs...)
+    keys_to_remove = [:days_configurations, :input_folder, :_output_folders]    
     write = get(kwargs, :write, true)
     energy_reserve = get(kwargs, :energy_reserve, g_energy_reserve)
-    
-    add_to_config = Dict(
-        :max_iterations => get(kwargs, :max_iterations, g_max_iterations),
-        :constrain_redispatch => get(kwargs, :constrain_redispatch, g_constrain_redispatch),
-        :thermal_reserve =>  get(kwargs, :thermal_reserve, g_thermal_reserve),
-        :constrain_redispatch_by_energy =>get(kwargs, :constrain_redispatch_by_energy, g_constrain_redispatch_by_energy)
-    )
-   
+    # Transform kwargs into add_to_config, discarding days_configurations, input_folder, _output_folders
+    add_to_config = Dict()
+    for (k, v) in kwargs
+        if k ∉ keys_to_remove
+            add_to_config[k] = v
+        end
+    end   
     gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve_, required_energy_reserve_ = generate_deterministic_input_data(input_folder)
     config = merge(add_to_config, generate_basic_configuration(storage_df, energy_reserve))
     uc = construct_unit_commitment(
