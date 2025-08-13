@@ -21,9 +21,10 @@ g_expected_min_SOE = false
 g_VLOL = 1e4 # 
 g_VLGEN = 30 # <- 0
 
-#construct_economic_dispatch
+# construct_economic_dispatch
 g_constrain_SOE_by_envelopes = false
 g_constrain_redispatch_by_energy = true
+g_VSSOEFinal = 1e3 # <=VLOL*round_trip_efficiency
 
 # update_dispatch_restrictions
 g_constrain_redispatch = false
@@ -31,7 +32,7 @@ g_remove_variables_from_objective = false
  # If true, the reserve variables are constrained by the energy reserve variables
 
 # launch_monte_carlo_get_solution
-g_max_iterations = 100
+g_max_iterations = 1
 
 # get_variables_to_constrain
 g_variables_to_constrain = [:GEN] # Variables to constrain in the economic dispatch model

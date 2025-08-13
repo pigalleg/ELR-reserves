@@ -145,7 +145,7 @@ function get_solution(model, stochastic = false, get_dual_variables = false, cop
 end
 
 function get_solution_variables(model, stochastic)
-    variables_to_get = [:GEN, :COMMIT, :SHUT, :START, :CH, :DIS, :SOE, :SOEUP, :SOEDN, :ESOEUP, :ESOEDN, :RESUP, :CHRESDNCH, :CHRESUPCH, :DISRESUPDIS, :DISRESDNDIS, :RESDN, :ERESUP, :ERESDN, :LOL, :LGEN, :SOEUP_EC, :SOEDN_EC, :RESUPDIS, :RESUPCH, :RESDNDIS, :RESDNCH, :SRESUP, :SRESDN, :SERESUP, :SERESDN, :RRESUP, :RRESDN, :RERESUP, :RERESDN]   
+    variables_to_get = [:GEN, :COMMIT, :SHUT, :START, :CH, :DIS, :SOE, :SOEUP, :SOEDN, :ESOEUP, :ESOEDN, :RESUP, :CHRESDNCH, :CHRESUPCH, :DISRESUPDIS, :DISRESDNDIS, :RESDN, :ERESUP, :ERESDN, :LOL, :LGEN, :SOEUP_EC, :SOEDN_EC, :RESUPDIS, :RESUPCH, :RESDNDIS, :RESDNCH, :SRESUP, :SRESDN, :SERESUP, :SERESDN, :RRESUP, :RRESDN, :RERESUP, :RERESDN, :SSOEFinal]   
     return NamedTuple(k => value_to_df(model[k], stochastic) for k in intersect(keys(object_dictionary(model)), variables_to_get))
 end
 
@@ -190,6 +190,9 @@ function get_model_solution(model, gen_df, gen_variable; copy_model = true, load
     end
     if haskey(model, :FeasibilityTol)
         parameters_for_enriching = merge(parameters_for_enriching, (FeasibilityTol = parameter_value(model[:FeasibilityTol]),))
+    end
+    if haskey(model, :VSSOEFinal)
+        parameters_for_enriching = merge(parameters_for_enriching, (VSSOEFinal = parameter_value(model[:VSSOEFinal]),))
     end
     if enriched_solution
         get_objective_function = true
@@ -484,6 +487,15 @@ function get_enriched_storage(solution, data)
     #         on = [:r_id, :hour]
     #     )
     # end
+
+    if haskey(solution, :SSOEFinal)
+       aux = outerjoin(
+        aux, 
+        rename(solution.SSOEFinal, :value => :slack_SOE_final_MWh),
+        on = join_on,
+        order = :left
+       )
+    end 
     return leftjoin(aux, data[!,FIELD_FOR_ENRICHING], on = :r_id)
 end
 
@@ -542,7 +554,7 @@ function get_enriched_objective_value(enriched_solution, gen_df, storage, parame
     #TODO: deal with missing values
     function check_cost_consistency()
         aux = combine(groupby(cost, intersect([:scenario], propertynames(cost))), [:production_cost, :fixed_cost, :start_cost] .=> (x -> sum(skipmissing(x))), renamecols = false)
-        sum_cost = mean(aux.production_cost.+aux.fixed_cost.+aux.start_cost)
+        sum_cost = mean(aux.production_cost.+aux.fixed_cost.+aux.start_cost) # For SUC, this takes the mean across scenarios. For UC and ED, the mean does not have any effect because the DF's number of rows is always 1.
         if !isapprox(enriched_solution[:scalar].OPEX[1], sum_cost; rtol =  parameters.MIPGap) # OPEX = production_cost + fixed_cost + start_cost
             error("Start and operational cost mismatch with OPEX")
         end
@@ -558,8 +570,11 @@ function get_enriched_objective_value(enriched_solution, gen_df, storage, parame
         end
         if :LOL_cost in propertynames(cost)
             aux = combine(groupby(cost, intersect([:scenario], propertynames(cost))),[:LOL_cost, :LGEN_cost] .=> (x->sum(skipmissing(x))), renamecols = false)
-            sum_cost += mean(aux.LOL_cost .+ aux.LGEN_cost)
+            sum_cost += mean(aux.LOL_cost .+ aux.LGEN_cost) # Why mean? See comment on sum_cost
         end
+        if :slack_SOE_final_cost in propertynames(cost)
+            sum_cost += sum(skipmissing(cost.slack_SOE_final_cost))
+        end 
         if !isapprox(enriched_solution[:scalar].objective_value[1], sum_cost; rtol = parameters.MIPGap) 
             error("Start, operational cost and reserve penalization mismatch with objective value")
         end
@@ -579,13 +594,16 @@ function get_enriched_objective_value(enriched_solution, gen_df, storage, parame
     
     if :storage in keys(enriched_solution)
         cost_fields = [:var_om_cost_per_mwh]
-        fields_to_remove = intersect([:charge_MW, :discharge_MW, :SOE_MWh, :envelope_up_MWh,:envelope_down_MWh, :full_id], propertynames(enriched_solution[:storage]))  
+        fields_to_remove = intersect([:charge_MW, :discharge_MW, :SOE_MWh, :envelope_up_MWh,:envelope_down_MWh, :full_id, :slack_SOE_final_MWh], propertynames(enriched_solution[:storage]))  
         storage_cost = leftjoin(
             enriched_solution[:storage],
             storage[!,union(cost_fields, [:r_id])],
             on = [:r_id],
         )
         storage_cost.production_cost =  (storage_cost.charge_MW + storage_cost.discharge_MW) .* storage_cost.var_om_cost_per_mwh
+        if :slack_SOE_final_MWh in propertynames(storage_cost) 
+            storage_cost.slack_SOE_final_cost = storage_cost.slack_SOE_final_MWh .* parameters.VSSOEFinal
+        end
         select!(storage_cost, Not(union(cost_fields,fields_to_remove)))
         cost = vcat(cost, storage_cost, cols=:union)
     end

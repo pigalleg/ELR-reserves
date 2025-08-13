@@ -48,6 +48,9 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
         if :LGEN_MW in propertynames(s_ed.demand)
             out = outerjoin(out, combine(groupby(s_ed.demand, group_by), :LGEN_MW => sum => :LGEN_MWh), on = group_by)
         end
+        if :slack_SOE_final_MWh in propertynames(s_ed.storage)
+            out = outerjoin(out, combine(groupby(s_ed.storage, group_by), :slack_SOE_final_MWh => (x->sum(skipmissing(x))) => :slack_SOE_final_MWh), on = group_by)
+        end
         return out
     end
 
@@ -193,6 +196,7 @@ function calculate_adecuacy_gcd_KPI(gcdi_KPI)
         :thermal_reserve_up_activation_MWh => :E_thermal_reserve_up_activation_MWh, :thermal_reserve_down_activation_MWh => :E_thermal_reserve_down_activation_MWh,
         :objective_value => :EOV, :objective_value_uc => :OV_uc, :OPEX => :EOPEX, :OPEX_uc => :OPEX_uc, :redispatch_cost => :E_redispatch_cost, :LOL_cost => :EENS_cost, :LGEN_cost => :ELGEN_cost,
         :reserve_cost_uc => :reserve_cost_uc, :slack_reserve_up_cost_uc => :slack_reserve_up_cost_uc, :slack_reserve_down_cost_uc => :slack_reserve_down_cost_uc,
+        :slack_SOE_final_MWh => :E_slack_SOE_final_MWh, :slack_SOE_final_cost => :E_slack_SOE_final_cost,
         :energy_reserve_cost_uc => :energy_reserve_cost_uc, :slack_energy_reserve_up_cost_uc => :slack_energy_reserve_up_cost_uc, :slack_energy_reserve_down_cost_uc => :slack_energy_reserve_down_cost_uc,
         :start_cost => :E_start_cost, :fixed_cost => :E_fixed_cost, :production_cost => :E_production_cost, 
         :avg_marginal_energy_price_MU_MWh => :E_avg_marginal_energy_price_MU_MWh, :avg_marginal_energy_price_uc_MU_MWh => :avg_marginal_energy_price_uc_MU_MWh,
@@ -208,7 +212,7 @@ function calculate_adecuacy_gcd_KPI(gcdi_KPI)
 end
 
 function calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by)
-    keys_objective_value_ = [:production_cost, :fixed_cost, :start_cost, :LOL_cost, :LGEN_cost, :reserve_cost, :slack_reserve_up_cost, :slack_reserve_down_cost,:energy_reserve_cost, :slack_energy_reserve_up_cost, :slack_energy_reserve_down_cost]
+    keys_objective_value_ = [:production_cost, :fixed_cost, :start_cost, :LOL_cost, :LGEN_cost, :reserve_cost, :slack_reserve_up_cost, :slack_reserve_down_cost,:energy_reserve_cost, :slack_energy_reserve_up_cost, :slack_energy_reserve_down_cost, :slack_SOE_final_cost]
     keys_objective_value = intersect(keys_objective_value_, propertynames(s_ed.objective_function))
     out = combine(groupby(s_ed.objective_function, group_by), keys_objective_value .=> (x -> sum(skipmissing(x))), renamecols = false)
     out.OPEX = out.production_cost .+ out.fixed_cost .+ out.start_cost # this OPEX definition corresponds to model[:OPEX]
