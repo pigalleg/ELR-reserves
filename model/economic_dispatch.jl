@@ -54,12 +54,12 @@ function construct_economic_dispatch(gen_df; kwargs... )
     ramp_constraints = get(kwargs, :ramp_constraints, g_ramp_constraints)
     mip_gap = get(kwargs, :mip_gap, g_mip_gap)
     constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, g_constrain_SOE_by_envelopes)
-    
+    VSSOEFinal = get(kwargs, :VSSOEFinal, g_VSSOEFinal) # VSSOEFinal is the penalty for the slack variable SSOEFinal   
     sets =  get_sets(gen_df)
-    ed = ED(gen_df, VLOL, VLGEN, mip_gap)
+    ed = ED(gen_df, VLOL, VLGEN, VSSOEFinal, mip_gap)
     if !isnothing(storage)
         println("Adding storage...")
-        add_storage(ed, storage, sets, SOE_final = false)
+        add_storage(ed, storage, sets, SOE_final_strict = false)
         add_envelope_parameters(ed) # needs to be declared before constraint_SOE_final_to_envelopes and constrain_SOE_to_envelopes
         constraint_SOE_final_to_envelopes(ed)
         if constrain_SOE_by_envelopes
@@ -74,7 +74,7 @@ function construct_economic_dispatch(gen_df; kwargs... )
 end
 
 
-function ED(gen_df, VLOL, VLGEN, mip_gap)
+function ED(gen_df, VLOL, VLGEN, VSSOEFinal, mip_gap)
     println("Constructing ED...")
     # Outputs EC by fixing variables of UC
     ed = Model()
@@ -95,6 +95,7 @@ function ED(gen_df, VLOL, VLGEN, mip_gap)
     @variable(ed, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
     @variable(ed, VLOL[t in keys(VLOL)] in Parameter(VLOL[t])) # for post-processing purposes
     @variable(ed, VLGEN[t in keys(VLGEN)] in Parameter(VLGEN[t])) # for post-processing purposes
+    @variable(ed, VSSOEFinal in Parameter(VSSOEFinal)) # for post-processing purposes
     @variables(ed, begin
         GEN[G, T]  >= 0 # generation
         COMMIT[G_thermal, T], Bin # commitment status (Bin=binary)
@@ -117,7 +118,7 @@ function ED(gen_df, VLOL, VLGEN, mip_gap)
         sum(gen_df[gen_df.r_id .== g,:fixed_om_cost_per_mw_per_hour][1]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*COMMIT[g,t] for g in G_thermal for t in T) + 
         sum(gen_df[gen_df.r_id .== g,:fixed_om_cost_per_mw_per_hour][1]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1] for g in G_nt_nonvar for t in T)
     )
-    
+
     @expression(ed, OPEX,
         OperationalCost + StartCost
     )

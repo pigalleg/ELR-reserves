@@ -69,7 +69,7 @@ function add_ramp_constraints(model, gen_df, sets)
 end
 
 
-function add_storage(model, storage, sets; SOE_final = true)
+function add_storage(model, storage, sets; SOE_final_strict = true, VSSOEFinal = 0)
     T = sets.T 
     T_incr = copy(T)
     pushfirst!(T_incr, T_incr[1]-1) # T_incr = [t[1]-1,T]
@@ -146,9 +146,23 @@ function add_storage(model, storage, sets; SOE_final = true)
     @constraint(model, SOEO[s in S], #TODO: replace by T
         SOE[s,T_incr[1]] == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
     )
-    if SOE_final
+    if SOE_final_strict
         @constraint(model, SOEFinal[s in S],
             SOE[s,T[end]] == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
         )
+    else
+        @variable(model, SSOEFinal[S,T[end]] >= 0) # Needs to be defined as bidimentional for postprocessing purposes
+
+        @expression(model, SOEFinalSlackPenalizationCost,
+            sum(model[:VSSOEFinal]*SSOEFinal[s,T[end]] for s in S)
+        )
+        @objective(model, Min,
+            objective_function(model) + SOEFinalSlackPenalizationCost
+        )
+
+        @constraint(model, SOEFinalSlack[s in S],
+            SOE[s,T[end]] + SSOEFinal[s,T[end]] >= storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
+        )
+
     end
 end
