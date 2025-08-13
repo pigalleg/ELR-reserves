@@ -243,6 +243,7 @@ function add_thermal_reserve_power_constraints(model, gen_df, sets)
     T_red = sets.T_red
     GEN = model[:GEN]
     COMMIT = model[:COMMIT]
+    GENAUX = model[:GENAUX]
     if haskey(model, :RESUP) && haskey(model, :RESDN)
         RESUP = model[:RESUP]
         RESDN = model[:RESDN]
@@ -270,10 +271,10 @@ function add_thermal_reserve_power_constraints(model, gen_df, sets)
         )
         # (3) Robust ramp constraints
         @constraint(model, ResUpRampRobust[g in G_thermal, t in T_red],
-            GEN[g,t+1] + RESUP[g,t+1] - (GEN[g,t] - RESDN[g,t]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
+            GENAUX[g,t+1] + RESUP[g,t+1] - (GENAUX[g,t] - RESDN[g,t]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
         )
         @constraint(model, ResDnRampRobust[g in G_thermal, t in T_red],
-            GEN[g,t] + RESUP[g,t] - (GEN[g,t+1] - RESDN[g,t+1]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
+            GENAUX[g,t] + RESUP[g,t] - (GENAUX[g,t+1] - RESDN[g,t+1]) <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
         )
     end
 end
@@ -377,7 +378,7 @@ function add_energy_reserve_constraints(model, gen_df, storage::Union{DataFrame,
     end
 
     @variable(model, VRESERVE in Parameter(VRESERVE)) # used for postprocessing
-    @variable(model, VSRESUP[t in keys(VSRESUP)] in Parameter(VSRESUP[t])) # for post-processing purposes
+    @variable(model, VSRESUP[t in keys(VSRESUP)] in Parameter(VSRESUP[t])) # for postprocessing purposes
     @variable(model, VSRESDN[t in keys(VSRESDN)] in Parameter(VSRESDN[t]))
     @variable(model, RERESUP[j in T, t in T; j <= t] in Parameter(0))
     @variable(model, RERESDN[j in T, t in T; j <= t] in Parameter(0))
