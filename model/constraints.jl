@@ -53,12 +53,10 @@ function add_ramp_constraints(model, gen_df, sets)
     @constraint(model, RampDn_thermal[g in G_thermal, t in T_red], 
         GENAUX[g,t] - GENAUX[g,t+1] <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_dn_percentage][1]
     )
-
     # Ramp equations for non-thermal generators (constraining total generation GEN)
     @constraint(model, RampUp_nonthermal[g in G_nonthermal, t in T_red], 
         GEN[g,t+1] - GEN[g,t] <= gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*gen_df[gen_df.r_id .== g,:ramp_up_percentage][1]
     )
-
     # @constraint(model, RampDn[i in G, t in T_red], 
     #     GEN[i,t] - GEN[i,t+1] <= gen_df[gen_df.r_id .== i,:existing_cap_mw][1] * 
     #                              gen_df[gen_df.r_id .== i,:ramp_dn_percentage][1])

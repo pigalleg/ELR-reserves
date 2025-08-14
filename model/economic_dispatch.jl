@@ -189,6 +189,9 @@ function constraint_dispatch_variables_with_no_reserve(model, bidirectional_stor
         G = [ndims(res_var) == 3 ? [g for (g,j,t) in eachindex(res_var)] : axes(res_var)[1] for res_var in res_vars_value] # We take the set of assets that have reserve or energy reserve (res_vars) procured
         G = reduce(intersect, union(G, [axes(var_value)[1]])) # We also intersect with the set of assets belonging to var
         G_to_fix = setdiff(axes(var_value)[1], G)
+        if var_name == :GEN
+            G_to_fix = setdiff(G_to_fix, axes(var_value)[1][end]) #For GEN we discard last unit with is by default net_generation
+        end
         model_var = model[var_name]
         for key in collect(keys(var_value)) if key.I[1] in G_to_fix
                 fix(model_var[key], var_value[key], force = true) # force is needed because the variable has bounds defined.

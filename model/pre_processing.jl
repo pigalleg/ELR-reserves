@@ -61,6 +61,7 @@ function generate_deterministic_input_data(input_location, day = nothing)
   gen_info, fuels, loads_df, gen_variable_info, storage_info, storage_final_energy = read_data(input_location)
   gen_df = pre_process_generators_data(gen_info, fuels)
   gen_df, loads_df, gen_variable_df  = pre_process_load_gen_variable(gen_df, loads_df, pre_process_gen_variable(gen_df, gen_variable_info))
+  # gen_variable_df = pre_process_gen_variable(gen_df, gen_variable_info)
   storage_df = pre_process_storage_data(storage_info)
   # storage_df = pre_process_storage_data(storage_info, day, storage_final_energy)
   random_loads_df = read_random_demand(input_location)
@@ -232,8 +233,8 @@ function pre_process_generators_data(gen_info,  fuels)
   gen_df[last_, :existing_cap_mw] = 0
   gen_df[last_, :var_om_cost_per_mwh] = 0
   gen_df[last_, :is_variable] = true
-  gen_df[last_, :ramp_up_percentage] = 1
-  gen_df[last_, :ramp_dn_percentage] = 1
+  gen_df[last_, :ramp_up_percentage] = 1 # 100% ramp up
+  gen_df[last_, :ramp_dn_percentage] = 1 # 100% ramp down
   return identity.(gen_df)
 end
 
@@ -264,6 +265,13 @@ function pre_process_storage_data_old(storage_info, day, storage_final_energy)
   end
   return df
 end
+
+# function update_max_power(gen_df, gen_variable_df)
+#   # Updates max_production_mw in gen_variable_df based on existing_cap_mw in gen_df
+#   # This is used to update the maximum production of generators in the economic dispatch model
+#   gen_df[gen_df.full_id .== g_NET_GENERAION_FULL_ID, :existing_cap_mw]. = gen_variable_df[gen_variable_df.full_id .== g_NET_GENERAION_FULL_ID, :existing_cap_mw]
+#   return gen_variable_df
+# end
 
 function pre_process_load_gen_variable(gen_df, loads_df, gen_variable)
   # Used for UC and EC. Tranfers negative demand to generation
@@ -330,6 +338,7 @@ end
 
 
 function pre_process_gen_variable(gen_df, gen_variable_info)
+  
   # It sets g_NET_GENERAION_FULL_ID's cf to zero and adds existing_cap_mw based on gen_df. Needed for UC.
   gen_variable_info[!,g_NET_GENERAION_FULL_ID] .= 0 # net generation = -net_load for net_load < 0
   select_ = :day in propertynames(gen_variable_info) ? [:hour,:day] : [:hour]
