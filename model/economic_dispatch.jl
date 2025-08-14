@@ -120,7 +120,7 @@ function ED(gen_df, VLOL, VLGEN, VSSOEFinal, mip_gap)
     )
 
     @expression(ed, OPEX,
-        OperationalCost + StartCost
+        StartCost + OperationalCost
     )
 
     @objective(ed, Min, 

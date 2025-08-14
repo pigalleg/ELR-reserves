@@ -6,7 +6,7 @@ include("./utils.jl")
 include("../constraints.jl")
 
 
-function DUC(gen_df, mip_gap)
+function DUC(gen_df, VLOL, VLGEN, mip_gap)
     model = Model()
     set_solver_attributes(model, mip_gap)
     # model = direct_model(Gurobi.Optimizer())
@@ -19,14 +19,21 @@ function DUC(gen_df, mip_gap)
     G_nt_nonvar = sets.G_nt_nonvar
     T = sets.T
     T_red = sets.T_red
+    VLOL = convert_to_indexed_vector(VLOL, T)
+    VLGEN = convert_to_indexed_vector(VLGEN, T)
+
     @variable(model, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
     @variable(model, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
+    @variable(model, VLOL[t in keys(VLOL)] in Parameter(VLOL[t])) # for post-processing purposes
+    @variable(model, VLGEN[t in keys(VLGEN)] in Parameter(VLGEN[t])) # for post-processing purposes
     
     @variables(model, begin
-        GEN[G, T]  >= 0     # generation
-        COMMIT[G_thermal, T], Bin # commitment status (Bin=binary)
-        START[G_thermal, T], Bin  # startup decision
-        SHUT[G_thermal, T], Bin   # shutdown decision
+        GEN[G,T] >= 0    # generation
+        LOL[T] >= 0
+        LGEN[T] >= 0
+        COMMIT[G_thermal,T], Bin # commitment status (Bin=binary)
+        START[G_thermal,T], Bin  # startup decision
+        SHUT[G_thermal,T], Bin   # shutdown decision
     end)
          
   # Objective function
@@ -44,20 +51,21 @@ function DUC(gen_df, mip_gap)
         sum(gen_df[gen_df.r_id .== g,:fixed_om_cost_per_mw_per_hour][1]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1]*COMMIT[g,t] for g in G_thermal for t in T) + 
         sum(gen_df[gen_df.r_id .== g,:fixed_om_cost_per_mw_per_hour][1]*gen_df[gen_df.r_id .== g,:existing_cap_mw][1] for g in G_nt_nonvar for t in T)
     )
+
     @expression(model, OPEX,
-        model[:StartCost] + model[:OperationalCost]
+        StartCost + OperationalCost
     )
 
     @objective(model, Min,
-        model[:OPEX]
+        OPEX + sum(LOL[t]*VLOL[t] + LGEN[t]*VLGEN[t] for t in T)
     )
     # Demand balance constraint (supply must = demand in all time periods)
     # Expression is constructed to reuse during ED
     @expression(model, SupplyDemand[t in T],
-        sum(GEN[g,t] for g in G)
+        sum(GEN[g,t] for g in G) + LOL[t] - LGEN[t]
     )
     @constraint(model, SupplyDemandBalance[t in T], 
-        SupplyDemand[t] == p_DEMAND[t]
+        SupplyDemand[t] == p_DEMAND[t] 
     )
 
     add_capacity_constraints(model, gen_df, sets)

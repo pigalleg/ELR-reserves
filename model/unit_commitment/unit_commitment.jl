@@ -16,10 +16,12 @@ function construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_
     bidirectional_storage_reserve = get(kwargs, :bidirectional_storage_reserve, g_bidirectional_storage_reserve)
     thermal_reserve = get(kwargs, :thermal_reserve, g_thermal_reserve)
     naive_envelopes = get(kwargs, :naive_envelopes, g_naive_envelopes)
+    VLOL = get(kwargs, :VLOL, g_VLOL)
+    VLGEN = get(kwargs, :VLGEN, g_VLGEN)
 
     sets =  get_sets(gen_df)
 
-    uc = DUC(gen_df, mip_gap)
+    uc = DUC(gen_df, VLOL, VLGEN, mip_gap)
     
     if !isnothing(storage)
         println("Adding storage...")

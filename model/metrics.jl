@@ -55,7 +55,7 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
     end
 
     function calculate_uc_KPI(s_uc, group_by) #TODO: move it to calculate_adecuacy_gcd_KPI()
-        out = combine(groupby(s_uc.demand, group_by), :demand_MW => sum => :input_load_uc_MWh)
+        out = combine(groupby(s_uc.demand, group_by), [:demand_MW, :LGEN_MW, :LOL_MW] .=> sum .=> [:input_load_uc_MWh, :LGEN_uc_MWh, :LOL_uc_MWh])
         source_df = nothing
         if :reserve in keys(s_uc)
             keys_to_combine = Dict(
@@ -181,6 +181,7 @@ function calculate_adecuacy_gcd_KPI(gcdi_KPI)
     group_by = intersect([:configuration, :day], propertynames(gcdi_KPI))
     keys_to_combine = Dict(
         :LLD_h => :LOLE, :ENS_MWh => :EENS, :CURD_h => :CURE, :CUR_MWh => :ECUR, :LGEN_MWh => :ELGEN,
+        :LGEN_uc_MWh => :LGEN_uc_MWh, :LOL_uc_MWh => :LOL_uc_MWh,
         :input_load_MWh => :E_input_load_MWh, :input_RES_production_MWh => :E_input_RES_production_MWh, :thermal_production_MWh => :E_thermal_production_MWh,
         :input_load_uc_MWh => :input_load_uc_MWh, # manually cheked that the average gives back the original value
         :nonRES_nonThermal_production_MWh => :E_nonRES_nonThermal_production_MWh, :storage_charge_MWh => :E_storage_charge_MWh, :storage_discharge_MWh => :E_storage_discharge_MWh, :storage_net_charge_MWh => :E_storage_net_charge_MWh, :SOE_0_MWh => :SOE_0_MWh, :SOE_T_MWh => :E_SOE_T_MWh, :net_SOE_MWh => :E_net_SOE_MWh,
