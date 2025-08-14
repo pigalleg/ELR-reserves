@@ -271,7 +271,8 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
             random_loads_df = filter_day(day, random_loads_df_)
             required_reserve = filter_day(day, required_reserve_)
             required_energy_reserve = filter_day(day, required_energy_reserve_)
-            gen_df, loads_df, gen_variable_df = pre_process_load_gen_variable(gen_df_, loads_df, gen_variable_df)
+            gen_df = gen_df_
+            # gen_df, loads_df, gen_variable_df = pre_process_load_gen_variable(gen_df_, loads_df, gen_variable_df)
             μ_up, μ_dn = pre_process_μ(μ_config.value.up, μ_config.value.down)
 
             update_daily_data(
@@ -284,14 +285,13 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
                 required_reserve,
                 required_energy_reserve,
                 energy_reserve)
-
             s_uc[(day,μ_config.key)] = solve_get_solution(
                 uc,
                 gen_df,
                 loads_df,
                 gen_variable_df;
                 config...)
-
+                
             if !is_non_feasible(uc)
                 update_dispatch_restrictions(
                     ed,
