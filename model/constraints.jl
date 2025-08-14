@@ -23,7 +23,7 @@ function add_capacity_constraints(model, gen_df, sets)
     )
     # 3. variable generation, accounting for hourly capacity factor
     @constraint(model, Cap_var[g in G_var, t in T],
-        GEN[g,t] <= p_MAX_GEN[g,t]
+        GEN[g,t] == p_MAX_GEN[g,t]
     )
 end
 
