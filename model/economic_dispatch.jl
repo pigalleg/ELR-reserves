@@ -56,10 +56,10 @@ function construct_economic_dispatch(gen_df; kwargs... )
     constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, g_constrain_SOE_by_envelopes)
     VSSOEFinal = get(kwargs, :VSSOEFinal, g_VSSOEFinal) # VSSOEFinal is the penalty for the slack variable SSOEFinal   
     sets =  get_sets(gen_df)
-    ed = ED(gen_df, VLOL, VLGEN, VSSOEFinal, mip_gap)
+    ed = ED(gen_df, VLOL, VLGEN, mip_gap)
     if !isnothing(storage)
         println("Adding storage...")
-        add_storage(ed, storage, sets, SOE_final_strict = false)
+        add_storage(ed, storage, sets, SOE_final_strict = false, VSSOEFinal = VSSOEFinal)
         add_envelope_parameters(ed) # needs to be declared before constraint_SOE_final_to_envelopes and constrain_SOE_to_envelopes
         constraint_SOE_final_to_envelopes(ed)
         if constrain_SOE_by_envelopes
@@ -74,7 +74,7 @@ function construct_economic_dispatch(gen_df; kwargs... )
 end
 
 
-function ED(gen_df, VLOL, VLGEN, VSSOEFinal, mip_gap)
+function ED(gen_df, VLOL, VLGEN, mip_gap)
     println("Constructing ED...")
     # Outputs EC by fixing variables of UC
     ed = Model()
@@ -93,9 +93,8 @@ function ED(gen_df, VLOL, VLGEN, VSSOEFinal, mip_gap)
     @variable(ed, extra_OV in Parameter(0))
     @variable(ed, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
     @variable(ed, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
-    @variable(ed, VLOL[t in keys(VLOL)] in Parameter(VLOL[t])) # for post-processing purposes
-    @variable(ed, VLGEN[t in keys(VLGEN)] in Parameter(VLGEN[t])) # for post-processing purposes
-    @variable(ed, VSSOEFinal in Parameter(VSSOEFinal)) # for post-processing purposes
+    @variable(ed, p_VLOL[t in keys(VLOL)] in Parameter(VLOL[t])) # for post-processing purposes
+    @variable(ed, p_VLGEN[t in keys(VLGEN)] in Parameter(VLGEN[t])) # for post-processing purposes
     @variables(ed, begin
         GEN[G, T]  >= 0 # generation
         COMMIT[G_thermal, T], Bin # commitment status (Bin=binary)

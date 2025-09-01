@@ -167,37 +167,42 @@ function get_model_solution(model, gen_df, gen_variable; copy_model = true, load
     stochastic = !isnothing(scenarios)
     # sets = get_sets(gen_df)
     parameters_for_enriching = (MIPGap = parameter_value(model[:MIPGap]),)
-    if haskey(model, :VRESERVE) # UC
-        parameters_for_enriching = merge(parameters_for_enriching, (VRESERVE = parameter_value(model[:VRESERVE]),))
+    
+    if haskey(model, :p_VRESERVE) # UC
+        parameters_for_enriching = merge(parameters_for_enriching, (VRESERVE = parameter_value(model[:p_VRESERVE]),))
     end
-    if haskey(model, :VLOL) && haskey(model, :VLGEN) # ED or SUC
+    
+    if haskey(model, :p_VLOL) && haskey(model, :p_VLGEN) # ED or SUC
         parameters_for_enriching = merge(parameters_for_enriching,
-            (VLOL = Array(parameter_value.(model[:VLOL])),
-            VLGEN = Array(parameter_value.(model[:VLGEN])))
+            (VLOL = Array(parameter_value.(model[:p_VLOL])),
+            VLGEN = Array(parameter_value.(model[:p_VLGEN])))
         )
     end
+    
     if haskey(model, :μ_up) && haskey(model, :μ_dn) # UC or SUC
         parameters_for_enriching = merge(parameters_for_enriching,
             (μ_up = Array(parameter_value.(model[:μ_up])),
             μ_dn = Array(parameter_value.(model[:μ_dn])))
         )
     end
-    if haskey(model, :VSRESUP) && haskey(model, :VSRESDN) # UC
+    
+    if haskey(model, :p_VSRESUP) && haskey(model, :p_VSRESDN) # UC
         parameters_for_enriching = merge(parameters_for_enriching,
-            (VSRESUP = Array(parameter_value.(model[:VSRESUP])),
-            VSRESDN = Array(parameter_value.(model[:VSRESDN])))
+            (VSRESUP = Array(parameter_value.(model[:p_VSRESUP])),
+            VSRESDN = Array(parameter_value.(model[:p_VSRESDN])))
         )
     end
+    
     if haskey(model, :FeasibilityTol)
         parameters_for_enriching = merge(parameters_for_enriching, (FeasibilityTol = parameter_value(model[:FeasibilityTol]),))
     end
-    if haskey(model, :VSSOEFinal)
-        parameters_for_enriching = merge(parameters_for_enriching, (VSSOEFinal = parameter_value(model[:VSSOEFinal]),))
+    if haskey(model, :p_VSSOEFinal)
+        parameters_for_enriching = merge(parameters_for_enriching, (VSSOEFinal = parameter_value(model[:p_VSSOEFinal]),))
     end
     if enriched_solution
         get_objective_function = true
         if stochastic
-            loads_ = stack(scenarios.demand, Not([:day,:hour]), variable_name = :scenario, value_name = :demand)
+            loads_ = stack(scenarios.demand, Not([:day, :hour]), variable_name = :scenario, value_name = :demand)
         else
             loads_ = loads  
         end
