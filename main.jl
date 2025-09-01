@@ -292,7 +292,6 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
                 loads_df,
                 gen_variable_df;
                 config...)
-                
             if !is_non_feasible(uc)
                 update_dispatch_restrictions(
                     ed,
