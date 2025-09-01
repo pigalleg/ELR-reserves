@@ -284,3 +284,5 @@ function check3()
   empirical_cor =  mapslices(x ->cor(x, dims = 2), errors, dims = [1,2])
   @infiltrate
 end
+
+# Example of run: generate_reserve_file("./input/RTS-GMLC_v3.1");generate_energy_reserve_file("./input/RTS-GMLC_v3.1");

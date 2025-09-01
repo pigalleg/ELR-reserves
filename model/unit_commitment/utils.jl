@@ -26,8 +26,12 @@ function set_solver_attributes(model, mip_gap = nothing)
     # Logging.disable_logging(Logging.Warn)
     # set_optimizer_attribute(model, "LogFile", "./output/log_file.txt")
     # set_optimizer_attribute(model, "mip_rel_gap", mip_gap)
-    set_optimizer_attribute(model, "TimeLimit", 600.0)
+    set_optimizer_attribute(model, "TimeLimit", 600)
     set_optimizer_attribute(model, "OutputFlag", 0)
+    # set_optimizer_attribute(model, "NumericFocus", 2)         # moderate numeric focus
+    # set_optimizer_attribute(model, "ScaleFlag", 2)            # stronger internal scaling
+    # set_optimizer_attribute(model, "Method", 2)               # barrier method for root
+    # set_optimizer_attribute(model, "BarHomogeneous", 1)       # homogeneous self-dual barrier
     if !haskey(model, :FeasibilityTol)
         @variable(model, FeasibilityTol in Parameter(get_optimizer_attribute(model, "FeasibilityTol")))
     end

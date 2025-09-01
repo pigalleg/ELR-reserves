@@ -387,10 +387,10 @@ end
 
 function generate_basic_configuration(storage_df, energy_reserve)
   out = Dict(
-    :ramp_constraints => true,
+    # :ramp_constraints => true,
     :storage => storage_df,
-    :enriched_solution => true,
-    :storage_envelopes => true,
+    # :enriched_solution => true,
+    # :storage_envelopes => true,
     :reserve => !energy_reserve,
     :energy_reserve => energy_reserve,
     # :μ_up => μ_up,

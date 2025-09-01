@@ -249,6 +249,7 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
             add_to_config[k] = v
         end
     end   
+    
     gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve_, required_energy_reserve_ = generate_deterministic_input_data(input_folder)
     config = merge(add_to_config, generate_basic_configuration(storage_df, energy_reserve))
     uc = construct_unit_commitment(
