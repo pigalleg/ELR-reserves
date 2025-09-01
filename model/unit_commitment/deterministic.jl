@@ -163,10 +163,10 @@ function add_reserve_constraints(model, gen_df, storage::Union{DataFrame, Nothin
     @variable(model, RRESDN[t in T] in Parameter(0.0)) # time-dependent data
 
     @expression(model, ReservePenalizationCost,
-        p_VRESERVE*sum(RESUP[g,t] + RESDN[g,t] for g in G_reserve, t in T)
+        VRESERVE*sum(RESUP[g,t] + RESDN[g,t] for g in G_reserve, t in T)
     )
     @expression(model, ReserveSlackPenalizationCost,
-        sum(SRESUP[t]*p_VSRESUP[t] for t in T) + sum(SRESDN[t]*p_VSRESDN[t] for t in T)
+        sum(SRESUP[t]*VSRESUP[t] for t in T) + sum(SRESDN[t]*VSRESDN[t] for t in T)
     )
     @objective(model, Min, 
         objective_function(model) + model[:ReservePenalizationCost] + model[:ReserveSlackPenalizationCost]
