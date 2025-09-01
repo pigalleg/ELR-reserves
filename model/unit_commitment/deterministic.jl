@@ -24,8 +24,8 @@ function DUC(gen_df, VLOL, VLGEN, mip_gap)
 
     @variable(model, p_DEMAND[t in T] in Parameter(0.0)) # time-dependent data
     @variable(model, p_MAX_GEN[g in G_var, T in T] in Parameter(0.0)) # time-dependent data
-    @variable(model, VLOL[t in keys(VLOL)] in Parameter(VLOL[t])) # for post-processing purposes
-    @variable(model, VLGEN[t in keys(VLGEN)] in Parameter(VLGEN[t])) # for post-processing purposes
+    @variable(model, p_VLOL[t in keys(VLOL)] in Parameter(VLOL[t])) # for post-processing purposes
+    @variable(model, p_VLGEN[t in keys(VLGEN)] in Parameter(VLGEN[t])) # for post-processing purposes
     
     @variables(model, begin
         GEN[G,T] >= 0    # generation
@@ -155,18 +155,18 @@ function add_reserve_constraints(model, gen_df, storage::Union{DataFrame, Nothin
         SRESUP[T] >= 0 # RESUP slack
         SRESDN[T] >= 0 # RESDN slack
     end)
-    @variable(model, VRESERVE in Parameter(VRESERVE)) # used for post-processing
-    @variable(model, VSRESUP[t in T] in Parameter(VSRESUP[t])) # for post-processing purposes
-    @variable(model, VSRESDN[t in T] in Parameter(VSRESDN[t])) # for post-processing purposes
+    @variable(model, p_VRESERVE in Parameter(VRESERVE)) # used for post-processing
+    @variable(model, p_VSRESUP[t in T] in Parameter(VSRESUP[t])) # for post-processing purposes
+    @variable(model, p_VSRESDN[t in T] in Parameter(VSRESDN[t])) # for post-processing purposes
     
     @variable(model, RRESUP[t in T] in Parameter(0.0)) # time-dependent data
     @variable(model, RRESDN[t in T] in Parameter(0.0)) # time-dependent data
 
     @expression(model, ReservePenalizationCost,
-        VRESERVE*sum(RESUP[g,t] + RESDN[g,t] for g in G_reserve, t in T)
+        p_VRESERVE*sum(RESUP[g,t] + RESDN[g,t] for g in G_reserve, t in T)
     )
     @expression(model, ReserveSlackPenalizationCost,
-        sum(SRESUP[t]*VSRESUP[t] for t in T) + sum(SRESDN[t]*VSRESDN[t] for t in T)
+        sum(SRESUP[t]*p_VSRESUP[t] for t in T) + sum(SRESDN[t]*p_VSRESDN[t] for t in T)
     )
     @objective(model, Min, 
         objective_function(model) + model[:ReservePenalizationCost] + model[:ReserveSlackPenalizationCost]
@@ -369,7 +369,6 @@ function add_envelope_constraints(model, storage, naive_envelopes = false)
 end
 
 function add_energy_reserve_constraints(model, gen_df, storage::Union{DataFrame, Nothing}, storage_envelopes::Bool, storage_link_constraint::Bool, thermal_reserve::Bool, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
-    #TODO: include diagonal ramp reserves
     G_thermal = sets.G_thermal
     T = sets.T
     T_red = sets.T_red
@@ -385,9 +384,9 @@ function add_energy_reserve_constraints(model, gen_df, storage::Union{DataFrame,
         SOE = model[:SOE]
     end
 
-    @variable(model, VRESERVE in Parameter(VRESERVE)) # used for postprocessing
-    @variable(model, VSRESUP[t in keys(VSRESUP)] in Parameter(VSRESUP[t])) # for postprocessing purposes
-    @variable(model, VSRESDN[t in keys(VSRESDN)] in Parameter(VSRESDN[t]))
+    @variable(model, p_VRESERVE in Parameter(VRESERVE)) # used for postprocessing
+    @variable(model, p_VSRESUP[t in keys(VSRESUP)] in Parameter(VSRESUP[t])) # for postprocessing purposes
+    @variable(model, p_VSRESDN[t in keys(VSRESDN)] in Parameter(VSRESDN[t]))
     @variable(model, RERESUP[j in T, t in T; j <= t] in Parameter(0))
     @variable(model, RERESDN[j in T, t in T; j <= t] in Parameter(0))
 

@@ -72,7 +72,6 @@ function add_storage(model, storage, sets; SOE_final_strict = true, VSSOEFinal =
     T_incr = copy(T)
     pushfirst!(T_incr, T_incr[1]-1) # T_incr = [t[1]-1,T]
     S = create_storage_sets(storage)
-    
     # GEN = model[:GEN]
     p_DEMAND = model[:p_DEMAND]
     # START = model[:START]
@@ -149,10 +148,11 @@ function add_storage(model, storage, sets; SOE_final_strict = true, VSSOEFinal =
             SOE[s,T[end]] == storage[storage.r_id .== s,:initial_energy_proportion][1]*storage[storage.r_id .== s,:max_energy_mwh][1]
         )
     else
+        @variable(model, p_VSSOEFinal in Parameter(VSSOEFinal)) # for post-processing purposes
         @variable(model, SSOEFinal[S,T[end]] >= 0) # Needs to be defined as bidimentional for postprocessing purposes
 
         @expression(model, SOEFinalSlackPenalizationCost,
-            sum(model[:VSSOEFinal]*SSOEFinal[s,T[end]] for s in S)
+            sum(VSSOEFinal*SSOEFinal[s,T[end]] for s in S)
         )
         @objective(model, Min,
             objective_function(model) + SOEFinalSlackPenalizationCost
