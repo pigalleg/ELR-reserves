@@ -158,32 +158,41 @@ config = (
 function duc(;input_folder, day, kwargs...)
     # input_folder = get(kwargs, :input_folder, G_input_folder)
     # day = get(kwargs, :day, G_day)
-    gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve = generate_deterministic_input_data(day, input_folder)
+    gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve, required_energy_reserve = generate_deterministic_input_data(input_folder, day)
     storage_df.max_energy_mwh .=storage_df.max_energy_mwh*get(kwargs, :storage_max_energy_factor, 1)
     storage_df.existing_cap_mw .=storage_df.existing_cap_mw*get(kwargs, :storage_max_cap_factor, 1)
+    μ_up, μ_dn = pre_process_μ(get(kwargs, :μ_up, 1), get(kwargs, :μ_dn, 1))
     config = (
-
         ramp_constraints = true,
         enriched_solution = true,
         storage = storage_df,
-        reserve = required_reserve,
-        storage_envelopes = true,
+        # reserve = true,
+        # storage_envelopes = true,
         get_dual_variables = true,
         mip_gap = get(kwargs, :mip_gap, 1e-8),
         # energy_reserve = generate_energy_reserve(day, input_folder, loads_df, gen_variable_df, G_ε, G_ρ),
         # energy_reserve = generate_energy_reserves_deprecated(required_reserve),
         # energy_reserve = generate_energy_reserves_cumulative(required_reserve),
-        storage_link_constraint = false,
-        μ_up = get(kwargs, :μ_up, 1),
-        μ_dn = get(kwargs, :μ_dn, 1),
+        # storage_link_constraint = false,
+        # day_µ_configurations_file = ""
+        # μs = get(kwargs, :μs, [1]), 
     )
-    model= solve_unit_commitment(
-        gen_df,
-        loads_df,
-        gen_variable_df;
+    uc = construct_unit_commitment(
+        gen_df;
+        scenarios = nothing,
         config...
-        )
-    return model, get_model_solution(model, gen_df, gen_variable_df; loads = loads_df, config...), required_reserve
+
+    )
+    update_parameter_value(uc, :p_MAX_GEN, convert_to_matrix(gen_variable_df, :r_id, :hour, :max_production_mw))
+    update_parameter_value(uc, :p_DEMAND, loads_df[:,:demand])
+    solution = solve_get_solution(
+                uc,
+                gen_df,
+                loads_df,
+                gen_variable_df;
+                config...)
+
+    return uc, solution
 end
 
 function suc(;kwargs...)
@@ -275,7 +284,6 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
             gen_df = gen_df_
             # gen_df, loads_df, gen_variable_df = pre_process_load_gen_variable(gen_df_, loads_df, gen_variable_df)
             μ_up, μ_dn = pre_process_μ(μ_config.value.up, μ_config.value.down)
-
             update_daily_data(
                 uc,
                 loads_df,

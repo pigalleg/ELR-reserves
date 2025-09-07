@@ -135,3 +135,22 @@ def filter_demand(expected_load, loads_to_filter, required_reserve):
         upper = demand + reserve_up
         loads_to_filter.loc[idx, mask] = np.clip(row[mask], lower, upper)
     return loads_to_filter
+
+def transform_to_internal_time(df):
+    """
+    This function transforms the time in the dataframe to internal time (1-24)
+    It assumes that the hour is in the range of 1-8760
+    """
+    df = df.copy()  # Make a copy to avoid modifying the original
+    
+    # Transform hour columns to internal time (1-24)
+    for col_name in df.columns:
+        if 'hour' in col_name.lower():
+            df[col_name] = ((df[col_name] - 1) % 24) + 1
+    
+    # Sort by the intersection of ['r_id', 'day', 'hour'] and existing columns
+    sort_cols = [col for col in ['r_id', 'day', 'hour'] if col in df.columns]
+    if sort_cols:
+        df = df.sort_values(sort_cols).reset_index(drop=True)
+    
+    return df
