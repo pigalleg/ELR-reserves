@@ -55,7 +55,6 @@ function DUC(gen_df, VLOL, VLGEN, mip_gap)
     @expression(model, OPEX,
         StartCost + OperationalCost
     )
-
     @objective(model, Min,
         OPEX + sum(LOL[t]*VLOL[t] + LGEN[t]*VLGEN[t] for t in T)
     )

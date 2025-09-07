@@ -73,6 +73,8 @@ function generate_deterministic_input_data(input_location, day = nothing)
       loads_df = filter_day(day, loads_df)
       gen_variable_df = filter_day(day, gen_variable_df)
       random_loads_df = filter_day(day, random_loads_df)
+      required_reserve = filter_day(day, required_reserve)
+      required_energy_reserve = filter_day(day, required_energy_reserve)
   end
 
   # Random loads filtering according to reserves

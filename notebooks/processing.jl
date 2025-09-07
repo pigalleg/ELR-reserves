@@ -144,3 +144,30 @@ function load_energy_reserve(day, input_folder, loads_multi_df, gen_variable_mul
       return  generate_energy_reserves(loads_multi_df, gen_variable_multi_df, ε, ρ)
   end
 end
+
+function transform_to_internal_time(df::DataFrame)
+    # This function transforms the time in the dataframe to internal time (1-24)
+    # It assumes that the hour is in the range of 1-8760
+
+    df_copy = copy(df)  # Make a copy to avoid modifying the original
+
+    # Transform hour columns to internal time (1-24)
+    for col_name in names(df_copy)
+        if occursin("hour", lowercase(col_name))
+            df_copy[!, col_name] = ((df_copy[!, col_name] .- 1) .% 24) .+ 1
+        end
+    end
+
+    # Sort by the intersection of [:r_id, :day, :hour] and existing columns
+    sort_cols = Symbol[]
+    for col in [:r_id, :day, :hour]
+        if col in names(df_copy)
+            push!(sort_cols, col)
+        end
+    end
+    if !isempty(sort_cols)
+        sort!(df_copy, sort_cols)
+    end
+
+    return df_copy
+end
