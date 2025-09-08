@@ -5,8 +5,6 @@ include("./model/post_processing.jl")
 include("./model/metrics.jl")
 include("./model/unit_commitment/unit_commitment.jl")
 include("./model/economic_dispatch.jl")
-include("./notebooks/plotting.jl")
-include("./notebooks/processing.jl")
 include("./model/unit_commitment/config.jl")
 # __revise_mode__ = :eval
 # ENV["COLUMNS"]=120 # Set so all columns of DataFrames and Matrices are displayed
