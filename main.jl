@@ -1,5 +1,6 @@
 using Infiltrator
 
+include("./model/utils/warm_start.jl") #save_solution_to_csv, load_solution_from_csv!
 include("./model/pre_processing.jl")
 include("./model/post_processing.jl")
 include("./model/metrics.jl")
@@ -249,6 +250,8 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
     keys_to_remove = [:days_configurations, :input_folder, :_output_folders]    
     write = get(kwargs, :write, true)
     energy_reserve = get(kwargs, :energy_reserve, g_energy_reserve)
+    save_for_warm_start = get(kwargs, :save_for_warm_start, false)
+    warm_start_solution_folder = get(kwargs, :warm_start_solution_folder, nothing)
     # Transform kwargs into add_to_config, discarding days_configurations, input_folder, _output_folders
     add_to_config = Dict()
     for (k, v) in kwargs
@@ -292,12 +295,18 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
                 required_reserve,
                 required_energy_reserve,
                 energy_reserve)
+            if !isnothing(warm_start_solution_folder)
+                load_solution(uc, warm_start_solution_folder, day, μ_config.value.up)
+            end
             s_uc[(day,μ_config.key)] = solve_get_solution(
                 uc,
                 gen_df,
                 loads_df,
                 gen_variable_df;
                 config...)
+            if save_for_warm_start
+                save_solution(uc, output_folder, day, μ_config.value.up)
+            end
             if !is_non_feasible(uc)
                 update_dispatch_restrictions(
                     ed,
