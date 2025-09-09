@@ -39,14 +39,24 @@ function read_data(input_location, shift_timezone = false)
   loads = CSV.read(joinpath(input_uc_data_location,"Demand.csv"), DataFrame)
   gen_variable = CSV.read(joinpath(input_uc_data_location,"Generators_variability.csv"), DataFrame)
   storage_info = CSV.read(joinpath(input_uc_data_location,"Storage_data.csv"), DataFrame)
+  
   storage_final_energy_path = joinpath(input_uc_data_location, "Storage_final_energy.csv")
   storage_final_energy = isfile(storage_final_energy_path) ? CSV.read(storage_final_energy_path, DataFrame) : nothing
+
+  storage_inflows_path = joinpath(input_uc_data_location, "Storage_inflows.csv")
+  storage_inflows = isfile(storage_inflows_path) ? CSV.read(storage_inflows_path, DataFrame) : nothing
+
   # storage_final_energy = CSV.read(joinpath(input_uc_data_location,"Storage_final_energy.csv"), DataFrame)
   # rename all columns to lowercase (by convention)
   files_to_lowercase = [gen_info, fuels, loads, gen_variable, storage_info]
-  if storage_final_energy !== nothing
+  if !isnothing(storage_final_energy)
     push!(files_to_lowercase, storage_final_energy)
   end
+
+  if !isnothing(storage_inflows)
+    push!(files_to_lowercase, storage_inflows)
+  end
+
   for f in files_to_lowercase
       rename!(f,lowercase.(names(f)))
   end
@@ -54,11 +64,11 @@ function read_data(input_location, shift_timezone = false)
     to_GMT(gen_variable)
     to_GMT(loads)
   end
-  return gen_info, fuels, loads, identity.(gen_variable), storage_info, storage_final_energy
+  return gen_info, fuels, loads, identity.(gen_variable), storage_info, storage_final_energy, storage_inflows
 end
 
 function generate_deterministic_input_data(input_location, day = nothing)
-  gen_info, fuels, loads_df, gen_variable_info, storage_info, storage_final_energy = read_data(input_location)
+  gen_info, fuels, loads_df, gen_variable_info, storage_info, storage_final_energy, storage_inflows = read_data(input_location)
   gen_df = pre_process_generators_data(gen_info, fuels)
   gen_df, loads_df, gen_variable_df  = pre_process_load_gen_variable(gen_df, loads_df, pre_process_gen_variable(gen_df, gen_variable_info))
   # gen_variable_df = pre_process_gen_variable(gen_df, gen_variable_info)
@@ -67,6 +77,9 @@ function generate_deterministic_input_data(input_location, day = nothing)
   random_loads_df = read_random_demand(input_location)
   required_reserve = generate_reserves(input_location)
   required_energy_reserve = generate_energy_reserve(input_location)
+  if !isnothing(storage_inflows)
+    storage_inflows = pre_process_storage_inflows(storage_df, storage_inflows)
+  end
 
   # Day filtering
   if !isnothing(day)
@@ -75,19 +88,24 @@ function generate_deterministic_input_data(input_location, day = nothing)
       random_loads_df = filter_day(day, random_loads_df)
       required_reserve = filter_day(day, required_reserve)
       required_energy_reserve = filter_day(day, required_energy_reserve)
+      if !isnothing(storage_inflows)
+        storage_inflows = filter_day(day, storage_inflows)
+      end
   end
 
   # Random loads filtering according to reserves
   random_loads_df = filter_demand(loads_df, random_loads_df, required_reserve)
-  
   transform_to_internal_time(loads_df)
   transform_to_internal_time(gen_variable_df)
   transform_to_internal_time(random_loads_df)
-  return gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve, required_energy_reserve
+  if !isnothing(storage_inflows)
+    transform_to_internal_time(storage_inflows)
+  end
+  return gen_df, loads_df, random_loads_df, gen_variable_df, storage_df, required_reserve, required_energy_reserve, storage_inflows
 end
 
 function generate_stochastic_input_data(day, input_location = g_DEFAULT_LOCATION)
-  gen_info, fuels, loads_df, gen_variable_info, storage_info, storage_final_energy = read_data(input_location)
+  gen_info, fuels, loads_df, gen_variable_info, storage_info, storage_final_energy, storage_inflows = read_data(input_location)
   gen_df = pre_process_generators_data(gen_info, fuels)
   gen_variable_df  = pre_process_gen_variable(gen_df, gen_variable_info)
   storage_df = pre_process_storage_data(storage_info, day, storage_final_energy)
@@ -252,28 +270,6 @@ function pre_process_storage_data(storage_info)
   return df
 end
 
-function pre_process_storage_data_old(storage_info, day, storage_final_energy)
-  df = copy(storage_info)
-  if !(:full_id in propertynames(df))
-    # create full name of generator (including geographic location and cluster number)
-    #  for use with variable generation dataframe
-    df.full_id = df.region .* "_" .* df.resource .* "_" .* string.(df.cluster) .* ".0"
-  end 
-  df.full_id = lowercase.(df.full_id)
-  if !isnothing(storage_final_energy) && day in storage_final_energy.day
-    SOE_last = storage_final_energy[storage_final_energy.day .== day,[:r_id, :final_energy_proportion]]
-    df = select(df, Not(intersect(propertynames(df), [:final_energy_proportion]))) # discard :final_energy_proportion if present
-    df = leftjoin(df, SOE_last, on = :r_id)
-  end
-  return df
-end
-
-# function update_max_power(gen_df, gen_variable_df)
-#   # Updates max_production_mw in gen_variable_df based on existing_cap_mw in gen_df
-#   # This is used to update the maximum production of generators in the economic dispatch model
-#   gen_df[gen_df.full_id .== g_NET_GENERAION_FULL_ID, :existing_cap_mw]. = gen_variable_df[gen_variable_df.full_id .== g_NET_GENERAION_FULL_ID, :existing_cap_mw]
-#   return gen_variable_df
-# end
 
 function pre_process_load_gen_variable(gen_df, loads_df, gen_variable)
   # Used for UC and EC. Tranfers negative demand to generation
@@ -337,10 +333,18 @@ function pre_process_scenarios_demand_gen_variable(gen_df, scenarios_demand, gen
   return gen_df, scenarios_demand, gen_variable
 end
 
-
+function pre_process_storage_inflows(storage_df, storage_inflows)
+  select_ = :day in propertynames(storage_inflows) ? [:hour,:day] : [:hour]
+  aux = stack(storage_inflows, Not(select_), variable_name=:full_id, value_name=:cf)
+  out =  innerjoin(aux,
+    storage_df[storage_df.inflows .== 1,[:r_id, :full_id, :existing_cap_mw]],
+    on = :full_id) # innerjoin will remove inflows for storage units that are not set to have inflows
+  out.inflow_mw = out.cf .* out.existing_cap_mw
+  select!(out, Not(:cf))
+  return out
+end
 
 function pre_process_gen_variable(gen_df, gen_variable_info)
-  
   # It sets g_NET_GENERAION_FULL_ID's cf to zero and adds existing_cap_mw based on gen_df. Needed for UC.
   gen_variable_info[!,g_NET_GENERAION_FULL_ID] .= 0 # net generation = -net_load for net_load < 0
   select_ = :day in propertynames(gen_variable_info) ? [:hour,:day] : [:hour]

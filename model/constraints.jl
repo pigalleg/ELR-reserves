@@ -67,11 +67,17 @@ function add_ramp_constraints(model, gen_df, sets)
 end
 
 
-function add_storage(model, storage, sets; SOE_final_strict = true, VSSOEFinal = 0)
+function add_storage(model, storage, sets; inflows = false, SOE_final_strict = true, VSSOEFinal = 0)
     T = sets.T 
     T_incr = copy(T)
     pushfirst!(T_incr, T_incr[1]-1) # T_incr = [t[1]-1,T]
     S = create_storage_sets(storage)
+    if inflows
+        S_inflows = create_storage_inflows_set(storage)
+        @variable(model, p_INFLOW[s in S_inflows, t in T] in Parameter(0.0)) # time-dependent data
+    else
+        S_inflows = []
+    end
     # GEN = model[:GEN]
     p_DEMAND = model[:p_DEMAND]
     # START = model[:START]
@@ -118,13 +124,23 @@ function add_storage(model, storage, sets; SOE_final_strict = true, VSSOEFinal =
     @constraint(model, ChargeLogic[s in S, t in T],
         CH[s,t] <= storage[storage.r_id .== s,:existing_cap_mw][1]*M[s,t]
     )
+    for s in S_inflows, t in T
+        fix(CH[s,t], 0.0, force = true)
+    end
+    # @constraint(model, ChargeLogicInflow[s ∈ S_inflows, t in T],
+    #     CH[s,t] == 0
+    # )
     @constraint(model, DischargeLogic[s in S, t in T],
         DIS[s,t] <= storage[storage.r_id .== s,:existing_cap_mw][1]*(1-M[s,t])
     )
     
     # Storage constraints
-    @constraint(model, SOEEvol[s in S, t in T], 
+    @constraint(model, SOEEvol[s in S, t in T; s ∉ S_inflows], 
         SOE[s,t] == SOE[s,t-1] + CH[s,t]*storage[storage.r_id .== s,:charge_efficiency][1] - DIS[s,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
+    ) #TODO: add delta_T
+
+    @constraint(model, SOEEvolInflows[s in S, t in T; s ∈ S_inflows],
+        SOE[s,t] == SOE[s,t-1] + p_INFLOW[s,t]*storage[storage.r_id .== s,:charge_efficiency][1] + CH[s,t]*storage[storage.r_id .== s,:charge_efficiency][1] - DIS[s,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
     ) #TODO: add delta_T
 
     @constraint(model, SOEMax[s in S, t in T],
