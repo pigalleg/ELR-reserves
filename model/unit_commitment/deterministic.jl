@@ -328,12 +328,13 @@ function add_envelope_constraints(model, storage, naive_envelopes = false)
     end)
     if !naive_envelopes
         @constraint(model, SOEUpEvol[s in S, t in T],
-            SOEUP[s,t]  == SOEUP[s,t-1] + (CH[s,t] + RESDNCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] - RESDNDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
+            SOEUP[s,t] == SOE[s,t] + sum(RESDNCH[s,tt]*storage[storage.r_id .== s,:charge_efficiency][1] + RESDNDIS[s,tt]/storage[storage.r_id .== s,:discharge_efficiency][1] for tt in T if tt <= t)
+
         ) #TODO: add delta_T
         @constraint(model, SOEDnEvol[s in S, t in T], 
-            SOEDN[s,t]  == SOEDN[s,t-1] + (CH[s,t] - RESUPCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] + RESUPDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
+            SOEDN[s,t] == SOE[s,t] - sum(RESUPCH[s,tt]*storage[storage.r_id .== s,:charge_efficiency][1] + RESUPDIS[s,tt]/storage[storage.r_id .== s,:discharge_efficiency][1] for tt in T if tt <= t)
         ) #TODO: add delta_T
-    else
+    else # deprecated
         @constraint(model, SOEUpEvol[s in S, t in T],
             SOEUP[s,t]  == SOE[s,t] + RESDNCH[s,t]*storage[storage.r_id .== s,:charge_efficiency][1] + RESDNDIS[s,t]/storage[storage.r_id .== s,:discharge_efficiency][1]
         ) 
@@ -563,8 +564,6 @@ end
 
 
 function set_envelope_multipliers(model, μ_up, μ_dn, storage)
-    # SOEUP[s,t]  == SOEUP[s,t-1] + (CH[s,t] + p_μ_DN[t]*RESDNCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] - p_μ_DN[t]*RESDNDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
-    # SOEDN[s,t]  == SOEDN[s,t-1] + (CH[s,t] - p_μ_UP[t]*RESUPCH[s,t])*storage[storage.r_id .== s,:charge_efficiency][1] - (DIS[s,t] + p_μ_UP[t]*RESUPDIS[s,t])/storage[storage.r_id .== s,:discharge_efficiency][1]
     println("μ_up")
     println("μ_dn")
     SOEUpEvol = model[:SOEUpEvol]
@@ -574,10 +573,14 @@ function set_envelope_multipliers(model, μ_up, μ_dn, storage)
     RESDNCH = model[:RESDNCH]
     RESDNDIS = model[:RESDNDIS]
     for s in axes(SOEUpEvol)[1], t in axes(SOEUpEvol)[2]
-        set_normalized_coefficient(SOEUpEvol[s,t], RESDNCH[s,t], -μ_dn[t]*storage[storage.r_id .== s,:charge_efficiency][1])
-        set_normalized_coefficient(SOEUpEvol[s,t], RESDNDIS[s,t], -μ_dn[t]/storage[storage.r_id .== s,:discharge_efficiency][1])
-        set_normalized_coefficient(SOEDnEvol[s,t], RESUPCH[s,t], μ_up[t]*storage[storage.r_id .== s,:charge_efficiency][1])
-        set_normalized_coefficient(SOEDnEvol[s,t], RESUPDIS[s,t], μ_dn[t]/storage[storage.r_id .== s,:discharge_efficiency][1])
+        for tt in axes(SOEUpEvol)[2]
+            if tt <= t
+                set_normalized_coefficient(SOEUpEvol[s,t], RESDNCH[s,tt], -μ_dn[tt]*storage[storage.r_id .== s,:charge_efficiency][1])
+                set_normalized_coefficient(SOEUpEvol[s,t], RESDNDIS[s,tt], -μ_dn[tt]/storage[storage.r_id .== s,:discharge_efficiency][1])
+                set_normalized_coefficient(SOEDnEvol[s,t], RESUPCH[s,tt], μ_up[tt]*storage[storage.r_id .== s,:charge_efficiency][1])
+                set_normalized_coefficient(SOEDnEvol[s,t], RESUPDIS[s,tt], μ_dn[tt]/storage[storage.r_id .== s,:discharge_efficiency][1])
+            end
+        end
     end 
 end
 
