@@ -134,7 +134,7 @@ function add_storage_reserve_power_constraints(model, storage, sets)
     )
 end
 
-function add_reserve_constraints(model, gen_df, storage::Union{DataFrame, Nothing}, bidirectional_storage_reserve::Bool, storage_envelopes::Bool, naive_envelopes::Bool, thermal_reserve::Bool, storage_reserve_repartition::Union{Int64,Float64}, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
+function add_reserve_constraints(model, gen_df, storage::Union{DataFrame, Nothing}, bidirectional_storage_reserve::Bool, storage_envelopes::Bool, naive_envelopes::Bool, thermal_reserve::Bool, storage_reserve_repartition::Union{Int64,Float64}, inflows::Bool, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
     G_thermal = sets.G_thermal
     T = sets.T
     T_red = sets.T_red
@@ -178,6 +178,7 @@ function add_reserve_constraints(model, gen_df, storage::Union{DataFrame, Nothin
             fix(RESDN[g,t], 0.0, force = true)
         end
     end
+
 
     # (3) Storage reserve
     if !isnothing(storage)
@@ -232,6 +233,13 @@ function add_reserve_constraints(model, gen_df, storage::Union{DataFrame, Nothin
             # println("Adding storage reserve repartition...")
             # add_storage_reserve_repartition(model, reserve, storage_reserve_repartition, sets)
         end 
+        if inflows
+            S_inflows = create_storage_inflows_set(storage)
+            for s in S_inflows, t in T
+                fix(RESUPCH[s,t], 0.0, force = true)
+                fix(RESDNCH[s,t], 0.0, force = true)
+            end
+        end
     end
 
     # (4) Overall reserve requirements
@@ -368,7 +376,7 @@ function add_envelope_constraints(model, storage, naive_envelopes = false)
     )
 end
 
-function add_energy_reserve_constraints(model, gen_df, storage::Union{DataFrame, Nothing}, storage_envelopes::Bool, storage_link_constraint::Bool, thermal_reserve::Bool, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
+function add_energy_reserve_constraints(model, gen_df, storage::Union{DataFrame, Nothing}, storage_envelopes::Bool, storage_link_constraint::Bool, thermal_reserve::Bool, inflows::Bool, VRESERVE::Union{Int64,Float64}, VSRESUP::Union{Int64,Float64}, VSRESDN::Union{Int64,Float64}, sets::NamedTuple)
     G_thermal = sets.G_thermal
     T = sets.T
     T_red = sets.T_red
@@ -492,6 +500,14 @@ function add_energy_reserve_constraints(model, gen_df, storage::Union{DataFrame,
             @constraint(model, EnergyResDownLinkBis[s in S, j in T, t in T; j <= t],
                 ERESDNDIS[s,j,t] == sum(ERESDNDIS[s, tt, tt] for tt in T if (tt >= j)&(tt <= t))
             )
+        end
+        if inflows
+            S_inflows = create_storage_inflows_set(storage)
+            for s in S_inflows, j in T, t in T if j <= t
+                    fix(ERESUPCH[s,j,t], 0.0, force = true)
+                    fix(ERESDNCH[s,j,t], 0.0, force = true)
+                end
+            end
         end
     end
 

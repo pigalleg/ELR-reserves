@@ -4,6 +4,7 @@ include("./stochastic.jl")
 include("./config.jl")
 
 function construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_constraints; kwargs...)
+    
     println("Constructing DUC...")
     reserve = get(kwargs, :reserve, g_reserve)
     energy_reserve = get(kwargs, :energy_reserve, g_energy_reserve)
@@ -18,14 +19,17 @@ function construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_
     naive_envelopes = get(kwargs, :naive_envelopes, g_naive_envelopes)
     VLOL = get(kwargs, :VLOL, g_VLOL)
     VLGEN = get(kwargs, :VLGEN, g_VLGEN)
+    set_storage_inflows = get(kwargs, :set_storage_inflows, g_set_storage_inflows)
 
+     uc = DUC(gen_df, VLOL, VLGEN, mip_gap)
     sets =  get_sets(gen_df)
 
     uc = DUC(gen_df, VLOL, VLGEN, mip_gap)
-    
+    # Only storage is a DataFrame, reserve and energy reserve are booleans
+
     if !isnothing(storage)
         println("Adding storage...")
-        add_storage(uc, storage, sets)
+        add_storage(uc, storage, sets; inflows = set_storage_inflows)
     end
     if ramp_constraints
         println("Adding ramp constraints...")   
@@ -33,11 +37,11 @@ function construct_deterministic_unit_commitment(gen_df, mip_gap, storage, ramp_
     end
     if reserve
         println("Adding reserve constraints...")
-        add_reserve_constraints(uc, gen_df, storage, bidirectional_storage_reserve, storage_envelopes, naive_envelopes, thermal_reserve, storage_reserve_repartition, VRESERVE, VSRESUP, VSRESDN, sets)
+        add_reserve_constraints(uc, gen_df, storage, bidirectional_storage_reserve, storage_envelopes, naive_envelopes, thermal_reserve, storage_reserve_repartition, set_storage_inflows, VRESERVE, VSRESUP, VSRESDN, sets)
     end
     if energy_reserve
         println("Adding energy reserve constraints...")
-        add_energy_reserve_constraints(uc, gen_df, storage, storage_envelopes, storage_link_constraint, thermal_reserve, VRESERVE, VSRESUP, VSRESDN, sets)
+        add_energy_reserve_constraints(uc, gen_df, storage, storage_envelopes, storage_link_constraint, thermal_reserve, set_storage_inflows, VRESERVE, VSRESUP, VSRESDN, sets)
     end
     return uc
 end
@@ -57,7 +61,7 @@ function construct_stochastic_unit_commitment(gen_df, gen_variable, mip_gap, sto
     return uc
 end
 
-function update_daily_data(model, loads, gen_variable, storage, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve)
+function update_daily_data(model, loads, gen_variable, storage, μ_up, μ_dn, required_reserve, required_energy_reserve, energy_reserve, storage_inflows,  set_storage_inflows)
     # Updates the deterministic unit commitment model with new loads, gen_variable, reserve and energy_reserve
     println("Updating DUC model with time-dependent data...")
     # update_loads(model, loads)
@@ -74,6 +78,9 @@ function update_daily_data(model, loads, gen_variable, storage, μ_up, μ_dn, re
         set_energy_envelope_multipliers(model, μ_up, μ_dn, storage)
         update_parameter_value(model, :RERESUP, convert_to_matrix(required_energy_reserve, :i_hour, :t_hour, :reserve_up_MW))
         update_parameter_value(model, :RERESDN, convert_to_matrix(required_energy_reserve, :i_hour, :t_hour, :reserve_down_MW))
+    end
+    if set_storage_inflows
+        update_parameter_value(model, :p_INFLOW, convert_to_matrix(storage_inflows, :r_id, :hour, :inflow_mw))
     end
     println("...done")
     return model

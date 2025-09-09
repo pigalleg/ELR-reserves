@@ -252,6 +252,7 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
     energy_reserve = get(kwargs, :energy_reserve, g_energy_reserve)
     save_for_warm_start = get(kwargs, :save_for_warm_start, false)
     warm_start_solution_folder = get(kwargs, :warm_start_solution_folder, nothing)
+    set_storage_inflows = get(kwargs, :set_storage_inflows, g_set_storage_inflows)
     # Transform kwargs into add_to_config, discarding days_configurations, input_folder, _output_folders
     add_to_config = Dict()
     for (k, v) in kwargs
@@ -260,7 +261,7 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
         end
     end   
     
-    gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve_, required_energy_reserve_ = generate_deterministic_input_data(input_folder)
+    gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve_, required_energy_reserve_, storage_inflows_= generate_deterministic_input_data(input_folder)
     config = merge(add_to_config, generate_basic_configuration(storage_df, energy_reserve))
     uc = construct_unit_commitment(
         gen_df_;
@@ -271,7 +272,6 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
     
     # Collect background tasks
     background_tasks = []
-    
     for (day, μ_configs) in days_configurations
         s_uc = Dict()
         s_ed = Dict()
@@ -282,6 +282,11 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
             random_loads_df = filter_day(day, random_loads_df_)
             required_reserve = filter_day(day, required_reserve_)
             required_energy_reserve = filter_day(day, required_energy_reserve_)
+            if !isnothing(storage_inflows_)
+                storage_inflows = filter_day(day, storage_inflows_)
+            else
+                storage_inflows = nothing
+            end
             gen_df = gen_df_
             # gen_df, loads_df, gen_variable_df = pre_process_load_gen_variable(gen_df_, loads_df, gen_variable_df)
             μ_up, μ_dn = pre_process_μ(μ_config.value.up, μ_config.value.down)
@@ -294,7 +299,10 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
                 μ_dn,
                 required_reserve,
                 required_energy_reserve,
-                energy_reserve)
+                energy_reserve,
+                storage_inflows,
+                set_storage_inflows
+                )
             if !isnothing(warm_start_solution_folder)
                 load_solution(uc, warm_start_solution_folder, day, μ_config.value.up)
             end

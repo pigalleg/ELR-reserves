@@ -20,6 +20,7 @@ g_mip_gap = 1e-8
 g_expected_min_SOE = false
 g_VLOL = 1e4 # 
 g_VLGEN = 30 # <- 0
+g_set_storage_inflows = false # If true, storage inflows are considered in the model
 
 # construct_economic_dispatch
 g_constrain_SOE_by_envelopes = false

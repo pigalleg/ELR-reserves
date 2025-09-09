@@ -122,6 +122,10 @@ function create_storage_sets(storage)
   return storage.r_id
 end
 
+function create_storage_inflows_set(storage)
+  return unique(storage[storage.inflows .==1,:r_id])
+end
+
 function create_scenarios_sets(scenarios_probability)
     return scenarios_probability.scenario
 end
