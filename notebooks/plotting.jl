@@ -28,6 +28,7 @@ color_map=Dict(
     "Battery" => "rgb(136,34,85)",
     "CSP" => "gold",
     "HYDRO" => "darkblue",
+    "hydro_reservoir" => "darkblue",
     "ROR" => "cornflowerblue",
     "CC" => "grey",
     "CT" => "black",
