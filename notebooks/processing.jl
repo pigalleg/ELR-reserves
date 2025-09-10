@@ -18,7 +18,7 @@ order_ = [
   "CC", 
   "CT",
   "STEAM", 
-  "ROR", "HYDRO",
+  "ROR", "HYDRO","hydro_reservoir",
   "NUCLEAR",
   
 

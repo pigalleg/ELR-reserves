@@ -145,12 +145,12 @@ function get_solution(model, stochastic = false, get_dual_variables = false, cop
 end
 
 function get_solution_variables(model, stochastic)
-    variables_to_get = [:GEN, :COMMIT, :SHUT, :START, :CH, :DIS, :SOE, :SOEUP, :SOEDN, :ESOEUP, :ESOEDN, :RESUP, :CHRESDNCH, :CHRESUPCH, :DISRESUPDIS, :DISRESDNDIS, :RESDN, :ERESUP, :ERESDN, :LOL, :LGEN, :SOEUP_EC, :SOEDN_EC, :RESUPDIS, :RESUPCH, :RESDNDIS, :RESDNCH, :SRESUP, :SRESDN, :SERESUP, :SERESDN, :RRESUP, :RRESDN, :RERESUP, :RERESDN, :SSOEFinal]   
+    variables_to_get = [:GEN, :COMMIT, :SHUT, :START, :CH, :DIS, :SOE, :SOEUP, :SOEDN, :ESOEUP, :ESOEDN, :RESUP, :CHRESDNCH, :CHRESUPCH, :DISRESUPDIS, :DISRESDNDIS, :RESDN, :ERESUP, :ERESDN, :LOL, :LGEN, :SOEUP_EC, :SOEDN_EC, :RESUPDIS, :RESUPCH, :RESDNDIS, :RESDNCH, :SRESUP, :SRESDN, :SERESUP, :SERESDN, :RRESUP, :RRESDN, :RERESUP, :RERESDN, :SSOEFinal, :p_INFLOW]   
     return NamedTuple(k => value_to_df(model[k], stochastic) for k in intersect(keys(object_dictionary(model)), variables_to_get))
 end
 
 function get_solution_dual_variables(model, stochastic) # output's keys are of the format "$(constraint_name_)_dual"
-    constraints_to_get = [:SupplyDemandBalance, :ResUpRequirement, :ResDnRequirement, :EnergyResUpRequirement, :EnergyResDnRequirement, :SOEUPMax, :SOEDNMax, :SOEUPMin, :SOEDNMin, :ESOEUPMax, :ESOEDNMax, :ESOEUPMin, :ESOEDNMin, :RampUp_thermal, :RampDn_thermal, :RampUp_nonthermal, :RampDn_nonthermal] #TODO: :SOEFinalUp, :SOEFinalDn
+    constraints_to_get = [:SupplyDemandBalance, :ResUpRequirement, :ResDnRequirement, :EnergyResUpRequirement, :EnergyResDnRequirement, :SOEUPMax, :SOEDNMax, :SOEUPMin, :SOEDNMin, :ESOEUPMax, :ESOEDNMax, :ESOEUPMin, :ESOEDNMin, :RampUp_thermal, :RampDn_thermal, :RampUp_nonthermal, :RampDn_nonthermal, :SOEFinal] #TODO: :SOEFinalUp, :SOEFinalDn
     if has_duals(model)
         return NamedTuple(Symbol("$(string(k))_dual") => value_to_df(dual.(model[k]), stochastic) for k in intersect(keys(object_dictionary(model)), constraints_to_get))
     else
@@ -268,7 +268,6 @@ function get_enriched_duals(solution)
                 on = [:hour, :hour_i]),
             on = [:hour, :hour_i])
     end
-
     if haskey(solution, :SOEUPMax_dual) && haskey(solution, :SOEDNMax_dual) && haskey(solution, :SOEUPMin_dual) && haskey(solution, :SOEDNMin_dual) #UC
         aux = outerjoin(
             aux,
@@ -291,9 +290,18 @@ function get_enriched_duals(solution)
                 rename(solution.ESOEDNMin_dual, :value => :dual_ESOE_down_min_MU_MW),
                 on = [:r_id, :hour, :hour_i]),
             on = [:r_id, :hour,:hour_i],
-            matchmissing = :equal
+            matchmissing = :equal # matchmissing is needed because r_id have "missing" values (system-level duals, like for reserve requirement)
         )
     end
+
+    if haskey(solution, :SOEFinal_dual) # UC
+        join_on = intersect([:hour], propertynames(aux))
+        aux = outerjoin(
+            aux,
+            rename(solution.SOEFinal_dual, :value => :dual_SOE_end_MU_MW),
+            on = :hour # we dont need to match r_id because SOEFinal_dual is system-level dual (r_id = missing)
+        )
+    end 
 
     join_on = intersect([:r_id, :hour, :scenario], propertynames(aux))
     if haskey(solution, :RampUp_thermal_dual) && haskey(solution, :RampDn_thermal_dual) # UC + ED + SUC
@@ -319,6 +327,7 @@ function get_enriched_duals(solution)
             matchmissing = :equal
         )   
     end
+    
     # if haskey(solution, :SOEFinalUp_dual) # ED. We assume that SOEFinalDn_dual is present
     #     join_on = intersect([:r_id, :hour], propertynames(aux))
     #     aux = leftjoin(
@@ -465,6 +474,13 @@ function get_enriched_storage(solution, data)
         rename(solution.SOE, :value => :SOE_MWh),
         on = join_on
     )
+    if haskey(solution, :p_INFLOW)
+        aux = outerjoin( #outer is needed because no all storage ids are assumed to have inflow
+            aux,
+            rename(solution.p_INFLOW, :value => :inflow_MW),
+            on = join_on
+        )
+    end
     if haskey(solution, :SOEUP) & haskey(solution, :SOEDN)
         aux = innerjoin(
             aux,
@@ -474,7 +490,7 @@ function get_enriched_storage(solution, data)
         )
     end
     if haskey(solution, :ESOEUP) & haskey(solution, :ESOEDN)
-        aux.hour_i = aux.hour
+        aux.hour_i = aux.hour # we need to crete hour_i to be able to join with ESOEUP and ESOEDN
         join_on = [:r_id, :hour_i, :hour]
         aux2 = innerjoin(
             rename(solution.ESOEUP, :value => :envelope_up_MWh),
@@ -482,7 +498,7 @@ function get_enriched_storage(solution, data)
             on = join_on
         
         )
-        aux = outerjoin(aux, aux2, on = join_on)
+        aux = outerjoin(aux, aux2, on = join_on) # outerjoin will expand to common keys
     end
     # if haskey(solution, :SOEUP_ED) & haskey(solution, :SOEDN_EC) # deprecated
     #     aux = innerjoin(
@@ -492,7 +508,6 @@ function get_enriched_storage(solution, data)
     #         on = [:r_id, :hour]
     #     )
     # end
-
     if haskey(solution, :SSOEFinal)
        aux = outerjoin(
         aux, 
@@ -500,7 +515,7 @@ function get_enriched_storage(solution, data)
         on = join_on,
         order = :left
        )
-    end 
+    end
     return leftjoin(aux, data[!,FIELD_FOR_ENRICHING], on = :r_id)
 end
 
