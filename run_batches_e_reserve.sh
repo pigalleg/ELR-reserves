@@ -17,11 +17,12 @@ done
 
 # Split DAYS into batches
 function split_days() {
-    local -n arr=$1
-    local n=$2
-    local total=${#arr[@]}
-    local batch_size=$(( (total + n - 1) / n ))
-    local batches=()
+    arr=("$@")
+    n=${arr[${#arr[@]}-1]}
+    unset 'arr[${#arr[@]}-1]'
+    total=${#arr[@]}
+    batch_size=$(( (total + n - 1) / n ))
+    batches=()
     for ((i=0; i<total; i+=batch_size)); do
         batch=("${arr[@]:i:batch_size}")
         batches+=("$(IFS=,; echo "${batch[*]}")")
@@ -29,17 +30,12 @@ function split_days() {
     echo "${batches[@]}"
 }
 
+# Pass DAYS and NUM_INSTANCES as arguments
 BATCHES=()
-read -ra BATCHES <<< "$(split_days DAYS $NUM_INSTANCES)"
+read -ra BATCHES <<< "$(split_days "${DAYS[@]}" "$NUM_INSTANCES")"
 
 for ((i=0; i<${#BATCHES[@]}; i++)); do
-    batch_days=(${BATCHES[$i]})
-    days_arg="["
-    for day in "${batch_days[@]}"; do
-        days_arg+="$day,"
-    done
-    days_arg="${days_arg%,}]"
-
+    days_arg="[${BATCHES[$i]}]"
     echo "Starting batch $((i+1)) with days: ${days_arg}"
 
     julia --project=. -e "
