@@ -229,6 +229,7 @@ end
 
 function generate_ed_solutions(;days = nothing, μs = nothing, day_µ_configurations_file = nothing, kwargs...)
     folders = get(kwargs, :folders, [(get(kwargs, :input_folder, G_input_folder), get(kwargs, :output_folder, "./output"))])
+    write_post_processing_files = get(kwargs, :write_post_processing_files, true)
     # day_µ_configurations = generate_μ_configurations(get(kwargs, :day_µ_configurations, nothing))
     for (input_folder, output_folder) in folders
         if isnothing(day_µ_configurations_file) #  we assume days and µs are provided
@@ -242,7 +243,9 @@ function generate_ed_solutions(;days = nothing, μs = nothing, day_µ_configurat
             end 
         end
         generate_ed_solutions_(day_µ_configurations, input_folder, output_folder; kwargs...)
-        generate_post_processing_KPI_files(output_folder, stochastic = false)
+        if write_post_processing_files
+            generate_post_processing_KPI_files(output_folder, stochastic = false)
+        end
     end
 end
 
