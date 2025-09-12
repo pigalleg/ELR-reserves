@@ -10,13 +10,13 @@ g_VRESERVE = 1e-6
 g_VSRESUP = 250 # <- 1e+4
 g_VRESDN = 250 # <- 30
 g_bidirectional_storage_reserve = true # update_dispatch_restrictions
-g_thermal_reserve = false
+g_thermal_reserve = true
 g_naive_envelopes = false
 
 # construct_unit_commitment & construct_economic_dispatch
 g_storage = nothing
 g_ramp_constraints = true
-g_mip_gap = 1e-8
+g_mip_gap = 1e-4
 g_expected_min_SOE = false
 g_VLOL = 1e4 # 
 g_VLGEN = 30 # <- 0
@@ -24,11 +24,11 @@ g_set_storage_inflows = false # If true, storage inflows are considered in the m
 
 # construct_economic_dispatch
 g_constrain_SOE_by_envelopes = false
-g_constrain_redispatch_by_energy = true
+g_constrain_redispatch_by_energy = false
 g_VSSOEFinal = 1e3 # <=VLOL*round_trip_efficiency
 
 # update_dispatch_restrictions
-g_constrain_redispatch = false
+g_constrain_redispatch = true
 g_remove_variables_from_objective = false
  # If true, the reserve variables are constrained by the energy reserve variables
 
