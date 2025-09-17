@@ -55,7 +55,32 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
     end
 
     function calculate_uc_KPI(s_uc, group_by) #TODO: move it to calculate_adecuacy_gcd_KPI()
-        out = combine(groupby(s_uc.demand, group_by), [:demand_MW, :LGEN_MW, :LOL_MW] .=> sum .=> [:input_load_uc_MWh, :LGEN_uc_MWh, :LOL_uc_MWh])
+        var_filter = s_uc.generation.r_id .∈ Ref(s_uc.generation_parameters[s_uc.generation_parameters.is_var,:r_id])
+        thermal_filter = s_uc.generation.r_id .∈ Ref(s_uc.generation_parameters[s_uc.generation_parameters.is_thermal,:r_id])
+        nt_nonvar_filter = .!var_filter .& .!thermal_filter
+        out = outerjoin(
+            combine(groupby(s_uc.demand, group_by), [:demand_MW, :LGEN_MW, :LOL_MW] .=> sum .=> [:input_load_uc_MWh, :LGEN_uc_MWh, :LOL_uc_MWh]),
+            combine(groupby(s_uc.generation[var_filter, :], group_by), :production_MW => sum => :input_RES_production_uc_MWh),
+            combine(groupby(s_uc.generation[thermal_filter, :], group_by), :production_MW => sum => :thermal_production_uc_MWh),
+            combine(groupby(s_uc.generation[nt_nonvar_filter, :], group_by), :production_MW => sum => :nonRES_nonThermal_production_uc_MWh),
+            on = group_by
+        )
+        for resource in unique(s_uc.generation.resource)
+            out = outerjoin(
+                out,
+                combine(groupby(s_uc.generation[s_uc.generation.resource .== resource,:], group_by), :production_MW => sum => Symbol(lowercase(resource)*"_production_uc_MWh")),
+                on = group_by
+            )
+
+        end 
+        if :storage in keys(s_uc)
+             keys_to_combine = Dict(
+                :charge_MW => :storage_charge_uc_MWh,
+                :discharge_MW => :storage_discharge_uc_MWh,
+             )
+            leftjoin!(out, combine(groupby(s_uc.storage, group_by), keys(keys_to_combine) .=> (x -> sum(skipmissing(x))) .=> values(keys_to_combine)), on = group_by)
+            out.storage_net_charge_uc_MWh = out.storage_charge_uc_MWh .- out.storage_discharge_uc_MWh
+        end
         source_df = nothing
         if :reserve in keys(s_uc)
             keys_to_combine = Dict(
@@ -83,8 +108,8 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
         if !isnothing(source_df)
             keys_to_combine = Dict(k => v for (k, v) in keys_to_combine if k in propertynames(s_uc.reserve))
             keys_to_combine_sub = Dict(k => v for (k, v) in keys_to_combine if k in [:reserve_up_MW, :reserve_down_MW, :energy_reserve_up_MW, :energy_reserve_down_MW])
-            thermal_filter = coalesce.(source_df.r_id .∈ Ref(s_ed.generation_parameters[s_ed.generation_parameters.is_thermal,:r_id]), false)
-            storage_filter = coalesce.(source_df.r_id .∈ Ref(s_ed.storage_parameters.r_id), false)
+            thermal_filter = coalesce.(source_df.r_id .∈ Ref(s_uc.generation_parameters[s_uc.generation_parameters.is_thermal,:r_id]), false)
+            storage_filter = coalesce.(source_df.r_id .∈ Ref(s_uc.storage_parameters.r_id), false)
             leftjoin!(out, combine(groupby(source_df, group_by), keys(keys_to_combine) .=> (x -> sum(skipmissing(x))) .=> values(keys_to_combine)), on = group_by)
             leftjoin!(out, combine(groupby(source_df[thermal_filter,:], group_by), keys(keys_to_combine_sub) .=> (x -> sum(skipmissing(x))) .=> ("thermal_" .* string.(values(keys_to_combine_sub)))), on = group_by)
             leftjoin!(out, combine(groupby(source_df[storage_filter,:], group_by), keys(keys_to_combine_sub) .=> (x -> sum(skipmissing(x))) .=> ("storage_" .* string.(values(keys_to_combine_sub)))), on = group_by)
@@ -179,36 +204,40 @@ end
 function calculate_adecuacy_gcd_KPI(gcdi_KPI)
     # Metrics from scenarios are aggregated through the mean
     group_by = intersect([:configuration, :day], propertynames(gcdi_KPI))
+    keys_to_ignore = union(group_by, [:mu, :iteration])
     keys_to_combine = Dict(
-        :LLD_h => :LOLE, :ENS_MWh => :EENS, :CURD_h => :CURE, :CUR_MWh => :ECUR, :LGEN_MWh => :ELGEN,
-        :LGEN_uc_MWh => :LGEN_uc_MWh, :LOL_uc_MWh => :LOL_uc_MWh,
-        :input_load_MWh => :E_input_load_MWh, :input_RES_production_MWh => :E_input_RES_production_MWh, :thermal_production_MWh => :E_thermal_production_MWh,
-        :input_load_uc_MWh => :input_load_uc_MWh, # manually cheked that the average gives back the original value
-        :nonRES_nonThermal_production_MWh => :E_nonRES_nonThermal_production_MWh, :storage_charge_MWh => :E_storage_charge_MWh, :storage_discharge_MWh => :E_storage_discharge_MWh, :storage_net_charge_MWh => :E_storage_net_charge_MWh, :SOE_0_MWh => :SOE_0_MWh, :SOE_T_MWh => :E_SOE_T_MWh, :net_SOE_MWh => :E_net_SOE_MWh,
-        :reserve_up_uc_MWh => :reserve_up_uc_MWh, :reserve_down_uc_MWh => :reserve_down_uc_MWh, :slack_reserve_up_uc_MWh => :slack_reserve_up_uc_MWh, :slack_reserve_down_uc_MWh => :slack_reserve_down_uc_MWh,
-        :thermal_reserve_up_uc_MWh => :thermal_reserve_up_uc_MWh, :thermal_reserve_down_uc_MWh => :thermal_reserve_down_uc_MWh,
-        :storage_reserve_up_uc_MWh => :storage_reserve_up_uc_MWh, :storage_reserve_down_uc_MWh => :storage_reserve_down_uc_MWh,
-        :required_reserve_up_uc_MWh => :required_reserve_up_uc_MWh, :required_reserve_down_uc_MWh => :required_reserve_down_uc_MWh,
-        :energy_reserve_up_uc_MWh => :energy_reserve_up_uc_MWh, :energy_reserve_down_uc_MWh => :energy_reserve_down_uc_MWh, :slack_energy_reserve_up_uc_MWh => :slack_energy_reserve_up_uc_MWh, :slack_energy_reserve_down_uc_MWh => :slack_energy_reserve_down_uc_MWh, 
-        :thermal_energy_reserve_up_uc_MWh => :thermal_energy_reserve_up_uc_MWh, :thermal_energy_reserve_down_uc_MWh => :thermal_energy_reserve_down_uc_MWh,
-        :storage_energy_reserve_up_uc_MWh => :storage_energy_reserve_up_uc_MWh, :storage_energy_reserve_down_uc_MWh => :storage_energy_reserve_down_uc_MWh,
-        :required_energy_reserve_up_uc_MWh => :required_energy_reserve_up_uc_MWh, :required_energy_reserve_down_uc_MWh => :required_energy_reserve_down_uc_MWh,
-        :storage_reserve_up_activation_MWh => :E_storage_reserve_up_activation_MWh, :storage_reserve_down_activation_MWh => :E_storage_reserve_down_activation_MWh,
-        :thermal_reserve_up_activation_MWh => :E_thermal_reserve_up_activation_MWh, :thermal_reserve_down_activation_MWh => :E_thermal_reserve_down_activation_MWh,
-        :objective_value => :EOV, :objective_value_uc => :OV_uc, :OPEX => :EOPEX, :OPEX_uc => :OPEX_uc, :redispatch_cost => :E_redispatch_cost, :LOL_cost => :EENS_cost, :LGEN_cost => :ELGEN_cost,
-        :reserve_cost_uc => :reserve_cost_uc, :slack_reserve_up_cost_uc => :slack_reserve_up_cost_uc, :slack_reserve_down_cost_uc => :slack_reserve_down_cost_uc,
-        :slack_SOE_final_MWh => :E_slack_SOE_final_MWh, :slack_SOE_final_cost => :E_slack_SOE_final_cost,
-        :energy_reserve_cost_uc => :energy_reserve_cost_uc, :slack_energy_reserve_up_cost_uc => :slack_energy_reserve_up_cost_uc, :slack_energy_reserve_down_cost_uc => :slack_energy_reserve_down_cost_uc,
-        :start_cost => :E_start_cost, :fixed_cost => :E_fixed_cost, :production_cost => :E_production_cost, 
-        :avg_marginal_energy_price_MU_MWh => :E_avg_marginal_energy_price_MU_MWh, :avg_marginal_energy_price_uc_MU_MWh => :avg_marginal_energy_price_uc_MU_MWh,
-        :avg_marginal_reserve_up_price_uc_MU_MWh => :avg_marginal_reserve_up_price_uc_MU_MWh, :avg_marginal_reserve_down_price_uc_MU_MWh => :avg_marginal_reserve_down_price_uc_MU_MWh,
-        :avg_marginal_energy_reserve_up_price_uc_MU_MWh => :avg_marginal_energy_reserve_up_price_uc_MU_MWh, :avg_marginal_energy_reserve_down_price_uc_MU_MWh => :avg_marginal_energy_reserve_down_price_uc_MU_MWh
+        :objective_value => :EOV,
+        :objective_value_uc => :OV_uc, 
     )
+    for key in propertynames(gcdi_KPI)
+        if !(key in keys(keys_to_combine)) && !(key in keys_to_ignore)
+            if occursin("_uc", String(key))
+                keys_to_combine[key] = key
+            else
+                keys_to_combine[key] = Symbol("E_", String(key))
+            end
+        end
+    end
     keys_to_combine = Dict(k => v for (k, v) in keys_to_combine if k in propertynames(gcdi_KPI))
     gcd_KPI = combine(groupby(gcdi_KPI, group_by), keys(keys_to_combine) .=> mean .=> values(keys_to_combine))
     if :configuration in propertynames(gcd_KPI)
         gcd_KPI = sort(transform(gcd_KPI, :configuration .=> ByRow(x -> parse_configuration_to_mu(x)) .=> :mu), :mu)
     end
+    cols = names(gcd_KPI)
+    first_cols = String[]
+    if "configuration" in cols
+        push!(first_cols, "configuration")
+    end
+    if "day" in cols
+        push!(first_cols, "day")
+    end
+    if "mu" in cols
+        push!(first_cols, "mu")
+    end
+    uc_cols = sort(filter(col -> occursin("_uc_", col), cols))
+    rest_cols = setdiff(cols, vcat(first_cols, uc_cols))
+    ordered_cols = vcat(first_cols, uc_cols, rest_cols)
+    gcd_KPI = gcd_KPI[:, ordered_cols]
     return gcd_KPI
 end
 
@@ -237,6 +266,12 @@ function calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by)
         end
         if hasproperty(out, :slack_energy_reserve_up_cost_uc) && hasproperty(out, :slack_energy_reserve_down_cost_uc)
             out.objective_value_uc .+= (out.slack_energy_reserve_up_cost_uc .+ out.slack_energy_reserve_down_cost_uc)
+        end
+        if hasproperty(out, :LOL_cost_uc)
+            out.objective_value_uc .+= out.LOL_cost_uc
+        end
+        if hasproperty(out, :LGEN_cost_uc)
+            out.objective_value_uc .+= out.LGEN_cost_uc
         end
         out.redispatch_cost = out.OPEX .- out.OPEX_uc
     end

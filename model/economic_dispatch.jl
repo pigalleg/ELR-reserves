@@ -174,10 +174,10 @@ end
 function constrain_decision_variables(model, reserve_variables, variables_to_constrain, constrain_dispatch, constrain_by_energy, bidirectional_storage_reserve)
     # If constrain_dispatch = true, it constraints the dispatch variables (up to three: :GEN, :CH and :DIS) according to the reserve procured at UC stage.
     # Variables that do not have a reserve or energy reserve element associated will be fixed to their value at UC stage.
-    # If constrain_dispatch = false, units providing reserve or energy reserve will not have their dispatched constrained, but not providing reserves will have their dispatch fixed to the value at UC stage.
+    # If constrain_dispatch = false, units providing reserve or energy reserve will not have their dispatched constrained, but units not participating in reserves will have their dispatch fixed to the value at UC stage.
     # If bidirectional_storage_reserve = true, it will consider that the reserve is provided by the storage unit in both charging modes.
     # It will also constrain variables in variables_to_constrain according to the reserve procured at UC stage.
-    if constrain_dispatch # assumes either ERESUP or RESUP exists
+    if constrain_dispatch
         constrain_dispatch_variables_according_to_reserve(model, bidirectional_storage_reserve, variables_to_constrain, constrain_by_energy; reserve_variables...)
     end
     constraint_dispatch_variables_with_no_reserve(model, bidirectional_storage_reserve, variables_to_constrain; reserve_variables...) # By default, units not offering reserve will have their dispatch fixed.
