@@ -341,11 +341,11 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
         end
         s_ed = merge_solutions(s_ed, [:day, :configuration])
         s_uc = merge_solutions(s_uc, [:day, :configuration])
-        if haskey(s_uc, :energy_reserve) 
-            s_uc = merge(s_uc, 
-                (reserve = vcat(get(s_uc, :reserve, DataFrame()), s_uc[:energy_reserve][s_uc[:energy_reserve].hour.==s_uc[:energy_reserve].hour_i,:][:,Not(:hour_i)]),)
-            )
-        end
+        # if haskey(s_uc, :energy_reserve) 
+        #     s_uc = merge(s_uc, 
+        #         (reserve = vcat(get(s_uc, :reserve, DataFrame()), s_uc[:energy_reserve][s_uc[:energy_reserve].hour.==s_uc[:energy_reserve].hour_i,:][:,Not(:hour_i)]),)
+        #     )
+        # end
         if write
             # s_uc and s_ec might have nonfeasible nonconverged solutions, so we write them only if they are feasible and make a different folder for these ones.
             s_uc, n_s_uc = filter_infeasible_solutions(s_uc)
