@@ -80,6 +80,12 @@ function calculate_supply_demand(solution, group_by = [:hour, :resource] )
       append!(supply, aux[!, push!(copy(group_by), :production_MW)])
       append!(demand,  aux[!,push!(copy(group_by), :demand_MW)], promote = true)
   end 
+  if :hour in propertynames(supply)
+    supply = supply[supply.hour .!= 0, :]
+  end
+  if :hour in propertynames(demand)
+    demand = demand[demand.hour .!= 0, :]
+  end
   return order_df(supply), order_df(demand)
 end
 

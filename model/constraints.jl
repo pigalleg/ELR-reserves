@@ -87,6 +87,7 @@ function add_storage(model, storage, sets; inflows = false, SOE_final_strict = t
         DIS[S,T] >= 0
         SOE[S,T_incr] >= 0 # T_incr captures SOE at t = T[1]-1
         M[S,T], Bin # (charging mode) M[s,t] = 1  => DIS[s,t] = 0, (discharging mode) M[s,t] = 0 => CH[s,t] = 0
+        M_b[T], Bin # variable to force the same charging logic in all batteries (S-S_inflows)
     end)
 
     # Redefinition of objecive function
@@ -133,7 +134,10 @@ function add_storage(model, storage, sets; inflows = false, SOE_final_strict = t
     @constraint(model, DischargeLogic[s in S, t in T],
         DIS[s,t] <= storage[storage.r_id .== s,:existing_cap_mw][1]*(1-M[s,t])
     )
-    
+    @constraint(model, ModeConsistency[s in S, t in T; s ∉ S_inflows],
+        M[s,t] == M_b[t]
+    )
+
     # Storage constraints
     @constraint(model, SOEEvol[s in S, t in T; s ∉ S_inflows], 
         SOE[s,t] == SOE[s,t-1] + CH[s,t]*storage[storage.r_id .== s,:charge_efficiency][1] - DIS[s,t]/storage[storage.r_id .== s,:discharge_efficiency][1]

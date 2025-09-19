@@ -55,11 +55,12 @@ function construct_economic_dispatch(gen_df; kwargs... )
     mip_gap = get(kwargs, :mip_gap, g_mip_gap)
     constrain_SOE_by_envelopes = get(kwargs, :constrain_SOE_by_envelopes, g_constrain_SOE_by_envelopes)
     VSSOEFinal = get(kwargs, :VSSOEFinal, g_VSSOEFinal) # VSSOEFinal is the penalty for the slack variable SSOEFinal   
+    set_storage_inflows = get(kwargs, :set_storage_inflows, g_set_storage_inflows)
     sets =  get_sets(gen_df)
     ed = ED(gen_df, VLOL, VLGEN, mip_gap)
     if !isnothing(storage)
         println("Adding storage...")
-        add_storage(ed, storage, sets, SOE_final_strict = false, VSSOEFinal = VSSOEFinal)
+        add_storage(ed, storage, sets, inflows = set_storage_inflows, SOE_final_strict = false, VSSOEFinal = VSSOEFinal)
         add_envelope_parameters(ed) # needs to be declared before constraint_SOE_final_to_envelopes and constrain_SOE_to_envelopes
         constraint_SOE_final_to_envelopes(ed)
         if constrain_SOE_by_envelopes
@@ -169,6 +170,12 @@ function update_envelope_parameters(model, envelope_variables, energy_envelope)
     end    
     update_parameter_value(model, :p_SOEUP, p_SOEUP)
     update_parameter_value(model, :p_SOEDN, p_SOEDN)
+end
+
+function update_storage_inflows(model, storage_inflows, set_storage_inflows)
+    if set_storage_inflows
+        update_parameter_value(model, :p_INFLOW, convert_to_matrix(storage_inflows, :r_id, :hour, :inflow_mw))
+    end 
 end
 
 function constrain_decision_variables(model, reserve_variables, variables_to_constrain, constrain_dispatch, constrain_by_energy, bidirectional_storage_reserve)
