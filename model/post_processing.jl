@@ -468,21 +468,21 @@ end
 
 function get_enriched_storage(solution, data)
     join_on = intersect([:r_id, :hour, :scenario], propertynames(solution.CH))
-    aux = innerjoin(
+    aux = outerjoin( # outerjoin will expand to common keys (hour 0 present in ESOEUP/ESOEDN will be included
         rename(solution.CH, :value => :charge_MW),
         rename(solution.DIS, :value => :discharge_MW),
         rename(solution.SOE, :value => :SOE_MWh),
         on = join_on
     )
     if haskey(solution, :p_INFLOW)
-        aux = outerjoin( #outer is needed because no all storage ids are assumed to have inflow
+        aux = outerjoin( # outer is needed because no all storage ids are assumed to have inflow
             aux,
             rename(solution.p_INFLOW, :value => :inflow_MW),
             on = join_on
         )
     end
     if haskey(solution, :SOEUP) & haskey(solution, :SOEDN)
-        aux = innerjoin(
+        aux = outerjoin( # outerjoin will expand to common keys (hour 0 present in SOEUP/SOEDN will be included
             aux,
             rename(solution.SOEUP, :value => :envelope_up_MWh),
             rename(solution.SOEDN, :value => :envelope_down_MWh),
@@ -498,7 +498,7 @@ function get_enriched_storage(solution, data)
             on = join_on
         
         )
-        aux = outerjoin(aux, aux2, on = join_on) # outerjoin will expand to common keys
+        aux = outerjoin(aux, aux2, on = join_on) # outerjoin will expand to common keys (hour 0 present in ESOEUP/ESOEDN will be included
     end
     # if haskey(solution, :SOEUP_ED) & haskey(solution, :SOEDN_EC) # deprecated
     #     aux = innerjoin(

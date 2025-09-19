@@ -1,5 +1,4 @@
 using Infiltrator
-
 include("./model/utils/warm_start.jl") #save_solution_to_csv, load_solution_from_csv!
 include("./model/pre_processing.jl")
 include("./model/post_processing.jl")
@@ -7,8 +6,8 @@ include("./model/metrics.jl")
 include("./model/unit_commitment/unit_commitment.jl")
 include("./model/economic_dispatch.jl")
 include("./model/unit_commitment/config.jl")
-# __revise_mode__ = :eval
-# ENV["COLUMNS"]=120 # Set so all columns of DataFrames and Matrices are displayed
+
+
 function plot_results(solution, required_reserve)
     supply, demand = calculate_supply_demand(solution)
     p1 = plot_fieldx_by_fieldy(supply, :production_MW, :resource)
@@ -304,8 +303,7 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
                 required_energy_reserve,
                 energy_reserve,
                 storage_inflows,
-                set_storage_inflows
-                )
+                set_storage_inflows)
             if !isnothing(warm_start_solution_folder)
                 load_solution(uc, warm_start_solution_folder, day, μ_config.value.up)
             end
@@ -316,7 +314,7 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
                 gen_variable_df;
                 config...)
             if save_for_warm_start
-                save_solution(uc, output_folder, day, μ_config.value.up)
+                save_solution(uc, output_folder, day, μ_config.value.up; model_type = :uc)
             end
             if !is_non_feasible(uc)
                 update_dispatch_restrictions(
@@ -329,7 +327,13 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
                 update_envelope_parameters(
                     ed,
                     get_envelope_variables(uc),
-                    config[:energy_reserve])
+                    config[:energy_reserve]
+                    )
+
+                update_storage_inflows(
+                    ed,
+                    storage_inflows,
+                    set_storage_inflows)
 
                 s_ed[(day,μ_config.key)] = launch_monte_carlo_get_solution(
                     ed,
@@ -337,6 +341,10 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
                     random_loads_df,
                     gen_variable_df;
                     config...)
+                # Optionally also save ED warm-start
+                # if save_for_warm_start
+                #     save_solution(ed, joinpath(output_folder, "n_$(day)"), day, μ_config.value.up; model_type = :ed)
+                # end
             end
         end
         s_ed = merge_solutions(s_ed, [:day, :configuration])
