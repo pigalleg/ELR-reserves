@@ -560,7 +560,7 @@ function add_energy_envelope_constraints(model, storage, sets)
     @constraint(model, SOEDNEvol_0[s in S, t in T],
         ESOEDN[s,T_incr[1],t] == ESOEDN[s,T[1],t]
     )
-
+    
     # SOEUP, SOEDN <=SOE_max
     @constraint(model, ESOEUPMax[s in S, j in T, t in T; j <= t],
         ESOEUP[s,j,t] <= storage[storage.r_id .== s,:max_energy_mwh][1]

@@ -105,7 +105,7 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
             source_df = s_uc.energy_reserve
         end
 
-        if !isnothing(source_df)
+        if !isnothing(source_df) && hasproperty(s_uc, :reserve)
             keys_to_combine = Dict(k => v for (k, v) in keys_to_combine if k in propertynames(s_uc.reserve))
             keys_to_combine_sub = Dict(k => v for (k, v) in keys_to_combine if k in [:reserve_up_MW, :reserve_down_MW, :energy_reserve_up_MW, :energy_reserve_down_MW])
             thermal_filter = coalesce.(source_df.r_id .∈ Ref(s_uc.generation_parameters[s_uc.generation_parameters.is_thermal,:r_id]), false)
