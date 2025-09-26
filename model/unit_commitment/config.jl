@@ -37,7 +37,6 @@ g_max_iterations = 1
 
 # get_variables_to_constrain
 g_variables_to_constrain = [:GEN] # Variables to constrain in the economic dispatch model
-g_constrain_SOE_by_envelopes = false
 
 # get_model_solution
 g_dual_variables = true
