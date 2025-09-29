@@ -46,7 +46,6 @@ for ((i=0; i<${#BATCHES[@]}; i++)); do
             input_folder = \"./input/$INPUT_FOLDER\",
             output_folder = \"./output/$OUTPUT_FOLDER\",
             energy_reserve = true,
-            set_storage_inflows = true,
             write_post_processing_files = false,
         )
     " &

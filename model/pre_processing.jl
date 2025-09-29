@@ -132,21 +132,36 @@ end
 
 function generate_day_µ_configurations(input_folder, file)
   df = CSV.read(joinpath(input_folder,"uc","$(file).csv"), DataFrame)
-  df = stack(df, Not(:day))  # df = stack(df, Not(:day)) # we assume structur of columns is [:day,:mu_1,...:mu_n]
+  df = stack(df, Not(intersect([:day, :hour], propertynames(df))))
+  sort!(df,intersect([:day, :hour], propertynames(df)))
   return df_to_day_µ_configurations(df)
 end
 
 function df_to_day_µ_configurations(df)
-  # example of output:  [(1, [(key = :base_ramp_storage_envelopes_up_0_54_dn_0_54, value = (up = 0.54, down = 0.54)), (key = :base_ramp_storage_envelopes_up_1_dn_1, value = (up = 1.0, down = 1.0))])
-  sort!(df,:day)
-  out = [(d, generate_μ_configurations(df[df.day .== d, :value])) for d in unique(df.day)]
-  return out
+  # example of output:  [(1, [(key = :base_ramp_storage_envelopes_up_0_54_dn_0_54, value = (up = 0.54, down = 0.54)), (key = :base_ramp_storage_envelopes_up_1_dn_1, value = (up = 1.0, down = 1.0))]) or [(1, [(key = :base_ramp_storage_envelopes_mu_i, value = (up = ::Vector, down = ::Vector)), (key = :base_ramp_storage_envelopes_mu_j, value = (up = ::Vector, down = ::Vector))])
+  if !(:hour in propertynames(df)) # we assume :day is always present
+    return [(d, generate_μ_configurations(df[df.day .== d, :value])) for d in unique(df.day)]
+  else # we assume the following structure : :day, :hour, :variable, :value, with variable = ["mu_i_up", "mu_i_down",....]
+    μs = unique([replace(replace(s, "_up" => ""), "_down" => "") for s in unique(df.variable)])
+    configs = []
+    for day in unique(df.day)
+      push!(configs, 
+        (day, generate_μ_configurations([
+          NamedTuple{(Symbol(μ),)}((
+            (up = df[(df.day .== day).&&(df.variable .== "$(μ)_up"), :value],
+             down = df[(df.day .== day).&&(df.variable .== "$(μ)_down"), :value]),))
+          for μ in μs]))
+      )
+    end
+    return configs
+  end
 end
 
 function generate_μ_configurations(μs) #   μs = [(μ_key = (up =::Vector, down=::Vector),)...]  # configuration name is for labeling purposes only
     mu_to_string(x) = isinteger(x) ? string(Int(x)) : replace(string(x), "." => "_")
-    if isa(μs, NamedTuple) # if μs is a list of named tuples μs = [(μ_key = (up =::Vector, down=::Vector),)...]
-        return [(key = Symbol("base_ramp_storage_envelopes_$(key)"), value = value) for (key, value) in pairs(μs)]
+    if μs isa AbstractVector{<:NamedTuple} # vector of named tuples: μs = [(μ_key = (up =::Vector, down=::Vector),)...]
+      return [(key = Symbol("base_ramp_storage_envelopes_$(k)"), value = v)
+          for μ in μs for (k, v) in pairs(μ)]
     else  # we assume is a list of values, μs =[float....] 
         return [(key = Symbol("base_ramp_storage_envelopes_up_$(mu_to_string(μ))_dn_$(mu_to_string(μ))"),  value = (up = μ, down = μ)) for μ in μs]
     end
