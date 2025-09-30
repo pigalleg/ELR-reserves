@@ -1,5 +1,8 @@
 g_horizon_length = 24
 
+# read data
+g_cap_ed_load_to_reserves = false
+
 # Construct deterministic unit commitment
 g_reserve = false
 g_energy_reserve = false

@@ -7,11 +7,37 @@ import numpy as np
 
 
 def parse_configuration_to_mu(x):
-    match_obj = re.match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", str(x))
-    if match_obj:
-        return float(match_obj.group(1).replace("_", "."))
-    else:
-        return 1
+    """
+    Parse configuration string to extract mu value.
+    
+    Parameters:
+    -----------
+    x : str
+        Configuration string to parse
+        
+    Returns:
+    --------
+    float, str, or None
+        - Float value if matches first pattern (base_ramp_storage_envelopes_up_X_dn_Y)
+        - String value if matches second pattern (base_ramp_storage_envelopes_X)  
+        - None if no pattern matches
+    """
+    x_str = str(x)
+    
+    # Pattern 1: base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)
+    expr_1 = r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)"
+    match_1 = re.search(expr_1, x_str)
+    if match_1:
+        return float(match_1.group(1).replace("_", "."))
+    
+    # Pattern 2: base_ramp_storage_envelopes_(\w+)
+    expr_2 = r"base_ramp_storage_envelopes_(\w+)"
+    match_2 = re.search(expr_2, x_str)
+    if match_2:
+        return match_2.group(1)
+    
+    # No pattern matches
+    return None
 
 def parquet_to_solution(file_name, file_folder, solution_keys = None):
     if solution_keys is None:
@@ -26,30 +52,11 @@ def read_parquet_and_convert(file):
         warnings.warn(f"The file {file} does not exist.")
         return pd.DataFrame()
     out = pq.read_table(file).to_pandas()
-    # for col in out.select_dtypes(include=['object']).columns:
-    #     out[col] = pd.to_numeric(out[col], errors='ignore')
-    # out.index = pd.MultiIndex.from_tuples(out.index, names=indices_)
     out.rename(columns={'scenario': 'iteration', 'mu': 'µ'}, inplace=True) # scenario --> iteration to aling suc's with ed's output
     if 'iteration' in out.columns:
         out['iteration'] = out['iteration'].apply(lambda x: re.sub(r'^scenario', 'iteration', x))
-    # if 'mu' in out.columns:
-        # out.rename(columns={'mu': 'µ'}, inplace=True)
-        # out.set_index('µ', append=True, inplace=True)
-        # out.sort_values(by='µ', inplace=True)
-        # out.set_index('µ', append=True, inplace=True)
-    if 'configuration' in out.columns:
-        out['µ'] = out['configuration'].apply(parse_configuration_to_mu)
-        # out.sort_values(by=['hour','µ',], inplace=True)
-      
-
-        # out.set_index('µ', append=True, inplace=True)
-        # out.drop(columns='µ', inplace=True)
-        
-    # indices_ = ['µ', 'configuration', 'iteration', 'day', 'r_id', 'hour']
-    # indices_ = [idx for idx in indices_ if idx in out.columns]
-    # if indices_:
-    #     out.set_index(pd.MultiIndex.from_frame(out[indices_], names=indices_), inplace=True)
-    #     out.drop(columns=indices_, inplace=True)
+    # if 'configuration' in out.columns: # uncomment in case µ is not in the output
+    #     out['µ'] = out['configuration'].apply(parse_configuration_to_mu)
     return out
 
 def load_solutions(solution_name, solution_folder, days, **kwargs):
@@ -107,6 +114,7 @@ def add_fields(df, **kwargs):
     df = df[cols]
     return df
 
+
 def add_kwargs_as_indices(df, **kwargs):
     for k, v in kwargs.items():
         df[k] = v
@@ -154,3 +162,75 @@ def transform_to_internal_time(df):
         df = df.sort_values(sort_cols).reset_index(drop=True)
     
     return df
+
+
+def classify_conservative_model(row):
+    """
+    Classify model type as 'conservative' if it's an envelope model with specific µ values.
+    
+    Parameters:
+    -----------
+    row : pandas.Series
+        A row from a DataFrame containing 'model_type' and 'µ' columns
+        
+    Returns:
+    --------
+    str
+        'conservative' if model_type contains 'envelope' and µ meets one of the conditions:
+        - µ == 1
+        - µ == 'mu_1'  
+        - 'conservative' in µ (as string)
+        otherwise returns the original model_type
+    """
+    mu_conditions = (
+        (row['µ'] == 1) or 
+        (row['µ'] == 'mu_1') or 
+        ('conservative' in str(row['µ']))
+    )
+    
+    if ('envelope' in row['model_type']) and mu_conditions:
+        return 'conservative'
+    else:
+        return row['model_type']
+
+def apply_conservative_classification(df):
+    """
+    Apply conservative model classification to a DataFrame in place.
+    
+    Parameters:
+    -----------
+    df : pandas.DataFrame
+        DataFrame containing 'model_type' and 'µ' columns.
+        This DataFrame will be modified in place.
+        
+    Returns:
+    --------
+    pandas.DataFrame
+        The same DataFrame with updated model_type column (for method chaining)
+    """
+    if 'µ' in df.columns:
+        df['model_type'] = df.apply(classify_conservative_model, axis=1)
+    return df
+
+def read_KPI_adequacy(solution_folders):
+
+    gcd_KPI_adequacy = []
+    gcdi_KPI_adequacy = []
+    for sol in solution_folders:
+        s = sol['solution_folder']
+        gcd_KPI_adequacy_ = read_parquet_and_convert( os.path.join("..", "output", s, "all_gcd_KPI_adequacy.parquet"))
+        gcd_KPI_adequacy_ = add_fields(gcd_KPI_adequacy_, model_type = sol['model_type'], solution_id = s) 
+
+        gcdi_KPI_adequacy_ = read_parquet_and_convert( os.path.join("..", "output", s, "all_gcdi_KPI_adequacy.parquet"))
+        gcdi_KPI_adequacy_ = add_fields(gcdi_KPI_adequacy_, model_type = sol['model_type'], solution_id = s)
+
+        gcd_KPI_adequacy.append(gcd_KPI_adequacy_)
+        gcdi_KPI_adequacy.append(gcdi_KPI_adequacy_)
+
+
+    gcd_KPI_adequacy = pd.concat(gcd_KPI_adequacy)
+    gcdi_KPI_adequacy = pd.concat(gcdi_KPI_adequacy)
+    apply_conservative_classification(gcdi_KPI_adequacy)
+    apply_conservative_classification(gcd_KPI_adequacy)
+
+    return gcd_KPI_adequacy, gcdi_KPI_adequacy

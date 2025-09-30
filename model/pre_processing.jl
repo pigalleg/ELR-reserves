@@ -67,7 +67,7 @@ function read_data(input_location, shift_timezone = false)
   return gen_info, fuels, loads, identity.(gen_variable), storage_info, storage_final_energy, storage_inflows
 end
 
-function generate_deterministic_input_data(input_location, day = nothing)
+function generate_deterministic_input_data(input_location, filter_random_load = true, day = nothing)
   gen_info, fuels, loads_df, gen_variable_info, storage_info, storage_final_energy, storage_inflows = read_data(input_location)
   gen_df = pre_process_generators_data(gen_info, fuels)
   gen_df, loads_df, gen_variable_df  = pre_process_load_gen_variable(gen_df, loads_df, pre_process_gen_variable(gen_df, gen_variable_info))
@@ -94,7 +94,9 @@ function generate_deterministic_input_data(input_location, day = nothing)
   end
 
   # Random loads filtering according to reserves
-  random_loads_df = filter_demand(loads_df, random_loads_df, required_reserve)
+  if filter_random_load
+      random_loads_df = filter_demand(loads_df, random_loads_df, required_reserve)
+  end
   transform_to_internal_time(loads_df)
   transform_to_internal_time(gen_variable_df)
   transform_to_internal_time(random_loads_df)
