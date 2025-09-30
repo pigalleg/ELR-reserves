@@ -244,7 +244,7 @@ function constrain_dispatch_variables_according_to_reserve(model, bidirectional_
             println("Constraint $name already exists....")
             remove_variable_constraint(model, name, true) # remove previous constraint if exists
         end
-        if !constrain_by_energy
+        if !constrain_by_energy # constraint by power 
             if ndims(res_up_var_value) == 2
                 G = intersect(axes(res_up_var_value)[1], axes(var_value)[1])
                 model[name] = @constraint(model, [g in G, t in T], 
@@ -260,7 +260,7 @@ function constrain_dispatch_variables_according_to_reserve(model, bidirectional_
             for g in G, t in T # important to identify constraints for deletion at each loop
                 set_name(model[name][g,t], string(name)*"[$g,$t]")
             end
-        else # constraint by power 
+        else # constraint by energy 
             G = [g for (g,j,t) in eachindex(res_up_var_value)]
             G = intersect(G, axes(var_value)[1])
             model[name] = @constraint(model,[g in G, j in T, t in T; j <= t],
