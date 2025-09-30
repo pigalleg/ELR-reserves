@@ -594,7 +594,7 @@ function set_envelope_multipliers(model, μ_up, μ_dn, storage)
                 set_normalized_coefficient(SOEUpEvol[s,t], RESDNCH[s,tt], -μ_dn[tt]*storage[storage.r_id .== s,:charge_efficiency][1])
                 set_normalized_coefficient(SOEUpEvol[s,t], RESDNDIS[s,tt], -μ_dn[tt]/storage[storage.r_id .== s,:discharge_efficiency][1])
                 set_normalized_coefficient(SOEDnEvol[s,t], RESUPCH[s,tt], μ_up[tt]*storage[storage.r_id .== s,:charge_efficiency][1])
-                set_normalized_coefficient(SOEDnEvol[s,t], RESUPDIS[s,tt], μ_dn[tt]/storage[storage.r_id .== s,:discharge_efficiency][1])
+                set_normalized_coefficient(SOEDnEvol[s,t], RESUPDIS[s,tt], μ_up[tt]/storage[storage.r_id .== s,:discharge_efficiency][1])
             end
         end
     end 
@@ -615,6 +615,6 @@ function set_energy_envelope_multipliers(model, μ_up, μ_dn, storage)
         set_normalized_coefficient(ESOEUpEvol[s,j,t], ERESDNCH[s,j,t], -μ_dn[t]*storage[storage.r_id .== s,:charge_efficiency][1])
         set_normalized_coefficient(ESOEUpEvol[s,j,t], ERESDNDIS[s,j,t], -μ_dn[t]/storage[storage.r_id .== s,:discharge_efficiency][1])
         set_normalized_coefficient(ESOEDnEvol[s,j,t], ERESUPCH[s,j,t], μ_up[t]*storage[storage.r_id .== s,:charge_efficiency][1])
-        set_normalized_coefficient(ESOEDnEvol[s,j,t], ERESUPDIS[s,j,t], μ_dn[t]/storage[storage.r_id .== s,:discharge_efficiency][1])
+        set_normalized_coefficient(ESOEDnEvol[s,j,t], ERESUPDIS[s,j,t], μ_up[t]/storage[storage.r_id .== s,:discharge_efficiency][1])
     end 
 end
