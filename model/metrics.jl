@@ -2,7 +2,20 @@ using DataFrames
 using Statistics
 using Parquet2
 
-parse_configuration_to_mu(x) = !isnothing(match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", string(x))) ? parse(Float64, replace(match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", string(x))[1], "_" => ".")) : 1
+
+# parse_configuration_to_mu(x) = !isnothing(match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", string(x))) ? parse(Float64, replace(match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", string(x))[1], "_" => ".")) : 1
+
+function parse_configuration_to_mu(x::String)
+    expr_1 = r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)"
+    expr_2 = r"base_ramp_storage_envelopes_(\w+)"
+    if occursin(expr_1, x)
+        return parse(Float64, replace(match(expr_1, x)[1], "_" => "."))
+    elseif occursin(expr_2, x)
+        return match(expr_2, x)[1]
+    else
+        return nothing
+    end
+end
 
 function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
     # if stochastic, s_ed = s_suc and s_uc = nothing
@@ -196,7 +209,7 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
         leftjoin!(gcdi_KPI, calculate_reserve_activation(s_ed, s_uc, group_by, group_by_uc), on = group_by)
     end
     if :configuration in propertynames(out)
-        out = sort(transform(out, :configuration .=> ByRow(x -> parse_configuration_to_mu(x)) .=> :mu), :mu)
+        out = sort(transform(out, :configuration .=> ByRow(x -> parse_configuration_to_mu(string(x))) .=> :mu), :mu)
     end
     return gcdi_KPI
 end
@@ -221,7 +234,7 @@ function calculate_adecuacy_gcd_KPI(gcdi_KPI)
     keys_to_combine = Dict(k => v for (k, v) in keys_to_combine if k in propertynames(gcdi_KPI))
     gcd_KPI = combine(groupby(gcdi_KPI, group_by), keys(keys_to_combine) .=> mean .=> values(keys_to_combine))
     if :configuration in propertynames(gcd_KPI)
-        gcd_KPI = sort(transform(gcd_KPI, :configuration .=> ByRow(x -> parse_configuration_to_mu(x)) .=> :mu), :mu)
+        gcd_KPI = sort(transform(gcd_KPI, :configuration .=> ByRow(x -> parse_configuration_to_mu(string(x))) .=> :mu), :mu)
     end
     cols = names(gcd_KPI)
     first_cols = String[]
@@ -276,7 +289,7 @@ function calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by)
         out.redispatch_cost = out.OPEX .- out.OPEX_uc
     end
     if :configuration in propertynames(out)
-        out = sort(transform(out, :configuration .=> ByRow(x -> parse_configuration_to_mu(x)) .=> :mu), :mu)
+        out = sort(transform(out, :configuration .=> ByRow(x -> parse_configuration_to_mu(string(x))) .=> :mu), :mu)
     end
 
     return out
