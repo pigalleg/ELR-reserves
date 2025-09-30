@@ -255,6 +255,7 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
     save_for_warm_start = get(kwargs, :save_for_warm_start, false)
     warm_start_solution_folder = get(kwargs, :warm_start_solution_folder, nothing)
     set_storage_inflows = get(kwargs, :set_storage_inflows, g_set_storage_inflows)
+    cap_ed_load_to_reserves = get(kwargs, :cap_ed_load_to_reserves, g_cap_ed_load_to_reserves)
     # Transform kwargs into add_to_config, discarding days_configurations, input_folder, _output_folders
     add_to_config = Dict()
     for (k, v) in kwargs
@@ -263,7 +264,7 @@ function generate_ed_solutions_(days_configurations, input_folder, output_folder
         end
     end   
     
-    gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve_, required_energy_reserve_, storage_inflows_= generate_deterministic_input_data(input_folder)
+    gen_df_, loads_df_, random_loads_df_, gen_variable_df_, storage_df, required_reserve_, required_energy_reserve_, storage_inflows_= generate_deterministic_input_data(input_folder, cap_ed_load_to_reserves)
     config = merge(add_to_config, generate_basic_configuration(storage_df, energy_reserve))
     uc = construct_unit_commitment(
         gen_df_;
