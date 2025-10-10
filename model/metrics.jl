@@ -4,6 +4,8 @@ using Parquet2
 
 
 # parse_configuration_to_mu(x) = !isnothing(match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", string(x))) ? parse(Float64, replace(match(r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)", string(x))[1], "_" => ".")) : 1
+g_NET_GENERATION_FULL_ID = "net_generation"
+g_SYSTEM_ID = "system"
 
 function parse_configuration_to_mu(x::String)
     expr_1 = r"base_ramp_storage_envelopes_up_(\w+)_dn_(\w+)"
@@ -68,6 +70,13 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
     end
 
     function calculate_uc_KPI(s_uc, group_by) #TODO: move it to calculate_adecuacy_gcd_KPI()
+        function filter_diagonal_terms(df)
+            if :hour_i in propertynames(df) # this allows to sum only diagonal terms of the reserve matrix
+                return df[df.hour .== df.hour_i, :]
+            else
+                return df
+            end
+        end
         var_filter = s_uc.generation.r_id .∈ Ref(s_uc.generation_parameters[s_uc.generation_parameters.is_var,:r_id])
         thermal_filter = s_uc.generation.r_id .∈ Ref(s_uc.generation_parameters[s_uc.generation_parameters.is_thermal,:r_id])
         nt_nonvar_filter = .!var_filter .& .!thermal_filter
@@ -119,6 +128,7 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
         end
 
         if !isnothing(source_df)
+            source_df = filter_diagonal_terms(source_df)
             keys_to_combine = Dict(k => v for (k, v) in keys_to_combine if k in propertynames(source_df))
             keys_to_combine_sub = Dict(k => v for (k, v) in keys_to_combine if k in [:reserve_up_MW, :reserve_down_MW, :energy_reserve_up_MW, :energy_reserve_down_MW])
             thermal_filter = coalesce.(source_df.r_id .∈ Ref(s_uc.generation_parameters[s_uc.generation_parameters.is_thermal,:r_id]), false)
@@ -164,9 +174,9 @@ function calculate_adecuacy_gcdi_KPI(s_ed, s_uc = nothing)
        
         # Thermal reserve activation
         thermal_filter_uc = s_uc.generation.r_id .∈ Ref(s_uc.generation_parameters[s_uc.generation_parameters.is_thermal,:r_id])
-        thermal_filter_uc = thermal_filter_uc .&& (s_uc.generation.resource .!= "net_generation")
+        thermal_filter_uc = thermal_filter_uc .&& (s_uc.generation.resource .!= g_NET_GENERATION_FULL_ID)
         thermal_filter_ed = s_ed.generation.r_id .∈ Ref(s_ed.generation_parameters[s_ed.generation_parameters.is_thermal,:r_id])
-        thermal_filter_ed = thermal_filter_ed .&& (s_ed.generation.resource .!= "net_generation")
+        thermal_filter_ed = thermal_filter_ed .&& (s_ed.generation.resource .!= g_NET_GENERATION_FULL_ID)
         generation = leftjoin(
             combine(groupby(s_ed.generation[thermal_filter_ed,:], union(group_by, [:hour])), :production_MW => sum => :production_MW), # hourly time profiles
             combine(groupby(s_uc.generation[thermal_filter_uc,:], union(group_by_uc, [:hour])), :production_MW => sum => :production_uc_MW),  # hourly time profiles
@@ -263,9 +273,22 @@ function calculate_objective_function_gcdi_KPI(s_ed, s_uc, group_by)
     # out.objective_value = select(out, keys_objective_value .=> ByRow(sum) => :objective_value)[:objective_value]
     # out.objective_value = out.OPEX .+ out.LOL_cost .+ out.LGEN_cost .+ out.reserve_cost # this objective value definition correspond to objective_function(model)
     if !isnothing(s_uc)
+        source_df = s_uc.objective_function
         group_by_uc = intersect([:configuration, :day], group_by)
-        keys_objective_value_uc = intersect(keys_objective_value_, propertynames(s_uc.objective_function))
+        keys_objective_value_uc = intersect(keys_objective_value_, propertynames(s_uc.objective_function)) 
         leftjoin!(out, combine(groupby(s_uc.objective_function, group_by_uc), keys_objective_value_uc .=> (x -> sum(skipmissing(x))) .=> Symbol.(keys_objective_value_uc, "_uc")), on = group_by_uc)
+        
+        
+        # Adding costs differentiated by asset type
+        var_filter = coalesce.(s_uc.objective_function.r_id .∈ Ref(s_uc.generation_parameters[s_uc.generation_parameters.is_var,:r_id]), false) #  coalesce is needed becase "system" has no id
+        thermal_filter = coalesce.(s_uc.objective_function.r_id .∈ Ref(s_uc.generation_parameters[s_uc.generation_parameters.is_thermal,:r_id]), false)
+        storage_filter = coalesce.(s_uc.objective_function.r_id .∈ Ref(s_uc.storage_parameters.r_id), false)
+        nt_nonvar_filter = .!var_filter .& .!thermal_filter .& .!storage_filter  .&& coalesce.(s_uc.objective_function.resource .!= g_SYSTEM_ID, false) # to avoid including LOL and LGEN costs which are not associated to a specific r_id
+        leftjoin!(out, combine(groupby(s_uc.objective_function[thermal_filter,:], group_by_uc), keys_objective_value_uc .=> (x -> sum(skipmissing(x))) .=> Symbol.("thermal_",keys_objective_value_uc, "_uc")), on = group_by_uc)
+        leftjoin!(out, combine(groupby(s_uc.objective_function[var_filter,:], group_by_uc), keys_objective_value_uc .=> (x -> sum(skipmissing(x))) .=> Symbol.("var_",keys_objective_value_uc, "_uc")), on = group_by_uc)
+        leftjoin!(out, combine(groupby(s_uc.objective_function[nt_nonvar_filter,:], group_by_uc), keys_objective_value_uc .=> (x -> sum(skipmissing(x))) .=> Symbol.("nt_nonvar_",keys_objective_value_uc, "_uc")), on = group_by_uc)
+        leftjoin!(out, combine(groupby(s_uc.objective_function[storage_filter,:], group_by_uc), keys_objective_value_uc .=> (x -> sum(skipmissing(x))) .=> Symbol.("storage_",keys_objective_value_uc, "_uc")), on = group_by_uc)
+       
         out.OPEX_uc = out.production_cost_uc .+ out.fixed_cost_uc .+ out.start_cost_uc
         out.objective_value_uc = out.OPEX_uc
         if hasproperty(out, :reserve_cost_uc)

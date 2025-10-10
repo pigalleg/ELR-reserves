@@ -45,9 +45,11 @@ def calculate_mu(required_reserve, required_energy_reserve):
 
     required_reserve.set_index(['day','hour'], inplace = True)
     required_energy_reserve.rename(columns = {'i_hour': 'hour_i', 't_hour':'hour', 'reserve_up_MW':'energy_reserve_up_MW', 'reserve_down_MW':'energy_reserve_down_MW'}, inplace=True)
-    required_energy_reserve_max = required_energy_reserve.groupby(['day', 'hour',]).max()
+    #####
+    # required_energy_reserve_max = required_energy_reserve.groupby(['day', 'hour',]).max() # comment or uncomment this and following line to use max or not
+    required_energy_reserve_max = required_energy_reserve[required_energy_reserve.hour_i ==1].set_index(['day','hour']).sort_index()
+    #####
     requirements_all = pd.concat([required_reserve, required_energy_reserve_max], axis=1)
-
     return pd.concat(
         [requirements_all.groupby('day').apply(lambda x: solve_system(x.reserve_up_MW, x.energy_reserve_up_MW, 'mu_up')),
         requirements_all.groupby('day').apply(lambda x: solve_system(x.reserve_down_MW, x.energy_reserve_down_MW, 'mu_down'))
