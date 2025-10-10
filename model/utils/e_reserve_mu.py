@@ -25,17 +25,38 @@ DEFAULT_SOLUTIONS: list[dict[str, str]] = [
 ]
 
 def solve_system(reserve, energy_reserve_max, column_name):
+    # Solve A x = B iteratively (forward substitution) without np.linalg.solve
     n = reserve.index.size
-    # Create matrix A as a lower triangular matrix for up reserves
-    A = np.zeros((n,n))
-    for i in range(n):
-        for j in range(n):
-            if i >= j:  # Lower triangular condition
-                A[i,j] = reserve.iloc[j]
+    r = reserve.to_numpy()
+    b = pd.Series(energy_reserve_max).reindex(reserve.index).to_numpy()
 
-    # Get vector B as the maximum energy reserve requirement for each hour
-    B = energy_reserve_max
-    return  pd.DataFrame({column_name: np.linalg.solve(A, B)}, index=reserve.index.get_level_values('hour'))
+    x = np.zeros(n, dtype=float)
+    for i in range(n):
+        s = float(r[:i] @ x[:i]) if i else 0.0
+        if r[i] == 0:
+            if np.isclose(b[i] - s, 0.0):
+                x[i] = 0.0
+            else:
+                raise ValueError("Singular system: zero diagonal coefficient.")
+        else:
+            x[i] = (b[i] - s) / r[i]
+            x[i] = float(np.clip(x[i], 0.0, 1.0))
+
+    return pd.DataFrame({column_name: x}, index=reserve.index.get_level_values('hour'))
+
+# def solve_system(reserve, energy_reserve_max, column_name):
+    # # Original method using np.linalg.solve
+    # n = reserve.index.size
+    # # Create matrix A as a lower triangular matrix for up reserves
+    # A = np.zeros((n,n))
+    # for i in range(n):
+    #     for j in range(n):
+    #         if i >= j:  # Lower triangular condition
+    #             A[i,j] = reserve.iloc[j]
+
+    # # Get vector B as the maximum energy reserve requirement for each hour
+    # B = energy_reserve_max
+    # return  pd.DataFrame({column_name: np.linalg.solve(A, B)}, index=reserve.index.get_level_values('hour'))
 
     
 
