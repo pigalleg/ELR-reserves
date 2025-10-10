@@ -5,7 +5,7 @@ using LinearAlgebra
 include("./unit_commitment/utils.jl")
 
 g_DEFAULT_LOCATION = "./input/base_case"
-g_NET_GENERAION_FULL_ID = "net_generation"
+g_NET_GENERATION_FULL_ID = "net_generation"
 g_UC_DATA = "uc"
 
 # --- start pre_processing ---
@@ -265,8 +265,8 @@ function pre_process_generators_data(gen_info,  fuels)
   end
   gen_df[last_, :r_id] = maximum(gen_df.r_id) + 1
   gen_df[!, :resource] = String.(gen_df[!, :resource]) # Ensures the column is of type String
-  gen_df[last_, :resource] = g_NET_GENERAION_FULL_ID 
-  gen_df[last_, :full_id] = g_NET_GENERAION_FULL_ID 
+  gen_df[last_, :resource] = g_NET_GENERATION_FULL_ID 
+  gen_df[last_, :full_id] = g_NET_GENERATION_FULL_ID 
   gen_df[last_, :existing_cap_mw] = 0
   gen_df[last_, :var_om_cost_per_mwh] = 0
   gen_df[last_, :is_variable] = true
@@ -304,17 +304,17 @@ function pre_process_load_gen_variable(gen_df, loads_df, gen_variable)
     installed_capacity = maximum(net_generation.generation)
     net_generation.cf = net_generation.generation./installed_capacity
   end
-  net_generation.full_id .= g_NET_GENERAION_FULL_ID
+  net_generation.full_id .= g_NET_GENERATION_FULL_ID
 
   gen_df = copy(gen_df)
-  gen_df[gen_df.full_id .== g_NET_GENERAION_FULL_ID, :existing_cap_mw] .= installed_capacity # Assumes that the element is already in the df
+  gen_df[gen_df.full_id .== g_NET_GENERATION_FULL_ID, :existing_cap_mw] .= installed_capacity # Assumes that the element is already in the df
 
-  gen_variable[gen_variable[!, :full_id] .== g_NET_GENERAION_FULL_ID,:cf] .= 0 # values reset to zero for re-iterations on the ED
-  gen_variable[gen_variable[!, :full_id] .== g_NET_GENERAION_FULL_ID,:existing_cap_mw] .= installed_capacity # values reset to zero for re-iterations on the ED
+  gen_variable[gen_variable[!, :full_id] .== g_NET_GENERATION_FULL_ID,:cf] .= 0 # values reset to zero for re-iterations on the ED
+  gen_variable[gen_variable[!, :full_id] .== g_NET_GENERATION_FULL_ID,:existing_cap_mw] .= installed_capacity # values reset to zero for re-iterations on the ED
   gen_variable = leftjoin(gen_variable, select(net_generation, Not([:demand,:generation])), on = [:hour, :full_id], makeunique = true) # We add :cf and :existing_cap_mw to gen_variable only on the hour where net_generation>0. # Since this is not happening at each hour, we have to create two columns cd_1 and cf_2
   join_on = intersect([:day, :hour], propertynames(gen_variable))
   gen_variable = select(gen_variable, union(join_on, [:full_id, :r_id, :existing_cap_mw]), [:cf_1, :cf] =>ByRow(coalesce) => [:cf]) # We then select columns :cf_1, then :cf and rename them to :cf
-  # gen_variable[gen_variable.full_id.== g_NET_GENERAION_FULL_ID, :existing_cap_mw] .= installed_capacity
+  # gen_variable[gen_variable.full_id.== g_NET_GENERATION_FULL_ID, :existing_cap_mw] .= installed_capacity
   gen_variable.max_production_mw = gen_variable.cf .* gen_variable.existing_cap_mw # production = cf * existing capacity
   return gen_df, loads_df, sort(gen_variable,union([:r_id], join_on))
 end
@@ -332,18 +332,18 @@ function pre_process_scenarios_demand_gen_variable(gen_df, scenarios_demand, gen
   # net_generation[!, Not([:hour, :day])]  = net_generation[!, Not([:hour, :day])] ./ installed_capacity # cf = generation / installed_capacity  
   net_generation = stack(net_generation, Not([:hour, :day]), variable_name=:scenario, value_name=:cf)
   net_generation.cf .= installed_capacity != 0 ? net_generation.cf ./ installed_capacity : 0
-  net_generation.full_id .= g_NET_GENERAION_FULL_ID
+  net_generation.full_id .= g_NET_GENERATION_FULL_ID
   net_generation.existing_cap_mw .= installed_capacity
-  net_generation.r_id .= gen_df[gen_df.full_id.== g_NET_GENERAION_FULL_ID,:r_id]
+  net_generation.r_id .= gen_df[gen_df.full_id.== g_NET_GENERATION_FULL_ID,:r_id]
   # Replicate gen_variable for each scenario and join to net_generation
-  gen_variable = gen_variable[gen_variable.full_id .!= g_NET_GENERAION_FULL_ID,:] 
+  gen_variable = gen_variable[gen_variable.full_id .!= g_NET_GENERATION_FULL_ID,:] 
   gen_variable = filter(row -> row.hour in net_generation.hour, gen_variable)
   scenarios_list = unique(net_generation.scenario)
   gen_variable_expanded = vcat([transform(gen_variable, :full_id => (_ -> s) => :scenario) for s in scenarios_list]...)
   gen_variable_expanded.scenario = convert.(eltype(net_generation.scenario), gen_variable_expanded.scenario)
   gen_variable = vcat(gen_variable_expanded, net_generation)
 
-  gen_df[gen_df.full_id .== g_NET_GENERAION_FULL_ID, :existing_cap_mw] .= installed_capacity 
+  gen_df[gen_df.full_id .== g_NET_GENERATION_FULL_ID, :existing_cap_mw] .= installed_capacity 
   
   # gen_variable = leftjoin(gen_variable_expanded, net_generation, on=[:day, :hour, :full_id, :scenario], makeunique=true)
   # gen_variable = select(gen_variable, Not(:cf_1), :cf => ByRow(coalesce) => :cf)
@@ -362,8 +362,8 @@ function pre_process_storage_inflows(storage_df, storage_inflows)
 end
 
 function pre_process_gen_variable(gen_df, gen_variable_info)
-  # It sets g_NET_GENERAION_FULL_ID's cf to zero and adds existing_cap_mw based on gen_df. Needed for UC.
-  gen_variable_info[!,g_NET_GENERAION_FULL_ID] .= 0 # net generation = -net_load for net_load < 0
+  # It sets g_NET_GENERATION_FULL_ID's cf to zero and adds existing_cap_mw based on gen_df. Needed for UC.
+  gen_variable_info[!,g_NET_GENERATION_FULL_ID] .= 0 # net generation = -net_load for net_load < 0
   select_ = :day in propertynames(gen_variable_info) ? [:hour,:day] : [:hour]
   aux = stack(gen_variable_info, Not(select_), variable_name=:full_id, value_name=:cf)
   return innerjoin(aux,
@@ -435,7 +435,7 @@ end
 
 function generate_reserves_old(loads, gen_variable, margin_percentage, baseload = 0)
   # deprecated
-  filter = gen_variable[!,:full_id] .== g_NET_GENERAION_FULL_ID
+  filter = gen_variable[!,:full_id] .== g_NET_GENERATION_FULL_ID
   net_gen = gen_variable[filter,:cf] .* gen_variable[filter,:existing_cap_mw]
   required_reserve = DataFrame(
     hour = loads[!,:hour],
@@ -447,7 +447,7 @@ end
 
 function generate_reserves_from_demand(loads, gen_variable, ε, ρ; margin=0.1)
   # deprecated
-  filter = gen_variable[!,:full_id] .== g_NET_GENERAION_FULL_ID
+  filter = gen_variable[!,:full_id] .== g_NET_GENERATION_FULL_ID
   net_gen = gen_variable[filter,:cf] .* gen_variable[filter,:existing_cap_mw]
   p = 1-ε # 0.975
   μ = (loads[!,:demand] .+ net_gen)
@@ -464,7 +464,7 @@ function generate_energy_reserves_from_demand(loads, gen_variable, ε, ρ; margi
   # deprecated
   # Assumes that X[t] t = [1...24] are independent N(0,σ[t])
   # therefore Z[i,t] = sum_{τ=i}^t X[τ] is N(0,σ_Z[i,t]) with σ_Z[i,t] = (sum_{τ=i}^t σ[τ]^2)^1/2
-  filter = gen_variable[!,:full_id] .== g_NET_GENERAION_FULL_ID
+  filter = gen_variable[!,:full_id] .== g_NET_GENERATION_FULL_ID
   net_gen = gen_variable[filter,:cf] .* gen_variable[filter,:existing_cap_mw]
   p = 1-ε
   # σ = quantile(Normal(),p)
