@@ -439,6 +439,8 @@ function run()
     end
 end
 
-# m_duc, s_duc, required_reserve = duc(input_folder = "./input/RTS-GMLC_v1.0", day = 7, storage_max_energy_factor = 1, storage_max_cap_factor = 1)
-# # println(s_duc.dual_variables)
-# plot_results(s_duc,required_reserve)
+#= Launching examples
+include("./main.jl")
+generate_ed_solutions(days = days[4:end], day_µ_configurations_file = "configuration_envelopes_e_reserve_mu_v3", input_folder = "./input/RTS-GMLC_v2.4.2", output_folder = "./output/RTS-GMLC_v32.3ss", write_post_processing_files= false);
+generate_ed_solutions(days = [2,3], μs= [0.5, 1], input_folder = "./input/RTS-GMLC_v1.2", output_folder = "./output/RTS-GMLC_e_reserve_compare_v1.5s", VLGEN = 30, get_dual_variables = true, mip_gap = 1e-8, VRESERVE = 1e-6, VSRESUP = 250, VSRESDN = 250, constrain_dispatch = false, thermal_reserve = true, energy_reserve = false, max_iterations = 1)
+=#

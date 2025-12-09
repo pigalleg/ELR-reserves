@@ -2,7 +2,8 @@ using DataFrames
 using Parquet2
 using MathOptInterface: TerminationStatusCode
 using Statistics
-include("../model/pre_processing.jl")
+include("../../model/pre_processing.jl")
+
 order_ = [
   "solar_photovoltaic_curtailment",
   "onshore_wind_turbine_curtailment",
