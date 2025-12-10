@@ -42,7 +42,7 @@ for ((i=0; i<${#BATCHES[@]}; i++)); do
         include(\"main.jl\");
         generate_ed_solutions(
             days = $days_arg,
-            day_µ_configurations_file = \"configuration_envelopes_e_reserve_mu\",
+            day_µ_configurations_file = \"configuration_envelopes_e_reserve_mu_v3\",
             input_folder = \"./input/$INPUT_FOLDER\",
             output_folder = \"./output/$OUTPUT_FOLDER\",
             write_post_processing_files = false,
