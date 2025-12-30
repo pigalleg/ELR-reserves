@@ -41,25 +41,47 @@ fi
 DEST_PATH="$1"
 SOURCE_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Convert relative paths to absolute paths
+if [[ "$DEST_PATH" != /* ]]; then
+    # Special handling for . and ..
+    if [ "$DEST_PATH" = "." ]; then
+        DEST_PATH="$PWD"
+    elif [ "$DEST_PATH" = ".." ]; then
+        DEST_PATH="$(cd .. && pwd)"
+    else
+        # For other relative paths, resolve to absolute
+        DEST_PATH="$(cd "$(dirname "$DEST_PATH")" 2>/dev/null && pwd)/$(basename "$DEST_PATH")" || DEST_PATH="$PWD/$DEST_PATH"
+    fi
+fi
+
 print_info "Source project: $SOURCE_PATH"
 print_info "Destination: $DEST_PATH"
 
 # Validate destination path to prevent dangerous operations
-if [ -z "$DEST_PATH" ] || [ "$DEST_PATH" = "/" ] || [ "$DEST_PATH" = "$HOME" ] || [ "$DEST_PATH" = "." ]; then
+if [ -z "$DEST_PATH" ] || [ "$DEST_PATH" = "/" ] || [ "$DEST_PATH" = "$HOME" ] || [ "$DEST_PATH" = "$PWD" ] || [ "$DEST_PATH" = "$SOURCE_PATH" ]; then
     print_error "Invalid destination path: '$DEST_PATH'"
-    print_error "Cannot use empty, root, home, or current directory as destination"
+    print_error "Cannot use empty, root, home, current, or source directory as destination"
     exit 1
 fi
 
 # Check if destination already exists
 if [ -d "$DEST_PATH" ]; then
     print_error "Destination directory already exists: $DEST_PATH"
-    read -p "Do you want to remove it and continue? (y/N): " -n 1 -r
+    
+    # Check if it looks like a previous project copy (has main.jl and Project.toml)
+    if [ -f "$DEST_PATH/main.jl" ] && [ -f "$DEST_PATH/Project.toml" ]; then
+        print_warning "Directory appears to be a previous project copy"
+    else
+        print_warning "Directory does NOT appear to be a project copy"
+    fi
+    
+    read -p "Are you sure you want to PERMANENTLY DELETE this directory? (yes/N): " -r
     echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    if [[ ! $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
         print_info "Operation cancelled"
         exit 1
     fi
+    
     print_warning "Removing existing directory..."
     rm -rf "$DEST_PATH"
 fi
