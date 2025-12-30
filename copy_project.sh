@@ -50,11 +50,13 @@ if [[ "$DEST_PATH" != /* ]]; then
         DEST_PATH="$(cd .. && pwd)"
     else
         # For other relative paths, resolve to absolute
-        if cd "$(dirname "$DEST_PATH")" 2>/dev/null; then
-            DEST_PATH="$(pwd)/$(basename "$DEST_PATH")"
+        # Use subshell to avoid changing current directory
+        DEST_PATH="$(cd "$(dirname "$DEST_PATH")" 2>/dev/null && pwd)/$(basename "$DEST_PATH")"
+        # If cd fails, construct absolute path from PWD
+        if [[ "$DEST_PATH" == /* ]]; then
+            : # Path is now absolute, do nothing
         else
-            # If cd fails, construct absolute path from PWD
-            DEST_PATH="$PWD/$(basename "$DEST_PATH")"
+            DEST_PATH="$PWD/$1"
         fi
     fi
 fi
@@ -126,7 +128,11 @@ else
     find "$SOURCE_PATH" -mindepth 1 -maxdepth 1 ! -name '.git' ! -name 'output' -exec cp -a {} "$DEST_PATH/" +
     
     # Remove temporary editor files and OS-specific files
-    find "$DEST_PATH" -type f \( -name '*.swp' -o -name '*.swo' -o -name '*~' -o -name '.DS_Store' \) -delete 2>/dev/null || true
+    # Note: These files are copied and then removed because find doesn't support complex exclusions with cp
+    TEMP_FILES_REMOVED=$(find "$DEST_PATH" -type f \( -name '*.swp' -o -name '*.swo' -o -name '*~' -o -name '.DS_Store' \) -delete -print 2>/dev/null | wc -l)
+    if [ "$TEMP_FILES_REMOVED" -gt 0 ]; then
+        print_info "Removed $TEMP_FILES_REMOVED temporary/cache files"
+    fi
 fi
 
 # Create empty output directory in destination
@@ -137,7 +143,14 @@ mkdir -p "$DEST_PATH/output"
 print_info "Setting permissions..."
 if [ -d "$DEST_PATH/scripts" ]; then
     # Using -exec {} + for better performance and security
-    find "$DEST_PATH/scripts" -type f -name "*.sh" -exec chmod +x {} + 2>/dev/null || true
+    SCRIPT_COUNT=$(find "$DEST_PATH/scripts" -type f -name "*.sh" -print | wc -l)
+    if [ "$SCRIPT_COUNT" -gt 0 ]; then
+        if find "$DEST_PATH/scripts" -type f -name "*.sh" -exec chmod +x {} + 2>/dev/null; then
+            print_info "Made $SCRIPT_COUNT shell scripts executable"
+        else
+            print_warning "Failed to set permissions on some shell scripts"
+        fi
+    fi
 fi
 
 # Verify copy
