@@ -50,7 +50,12 @@ if [[ "$DEST_PATH" != /* ]]; then
         DEST_PATH="$(cd .. && pwd)"
     else
         # For other relative paths, resolve to absolute
-        DEST_PATH="$(cd "$(dirname "$DEST_PATH")" 2>/dev/null && pwd)/$(basename "$DEST_PATH")" || DEST_PATH="$PWD/$DEST_PATH"
+        if cd "$(dirname "$DEST_PATH")" 2>/dev/null; then
+            DEST_PATH="$(pwd)/$(basename "$DEST_PATH")"
+        else
+            # If cd fails, construct absolute path from PWD
+            DEST_PATH="$PWD/$(basename "$DEST_PATH")"
+        fi
     fi
 fi
 
@@ -73,6 +78,13 @@ if [ -d "$DEST_PATH" ]; then
         print_warning "Directory appears to be a previous project copy"
     else
         print_warning "Directory does NOT appear to be a project copy"
+    fi
+    
+    # Check if running in an interactive terminal
+    if [ ! -t 0 ]; then
+        print_error "Cannot prompt for confirmation in non-interactive mode"
+        print_error "Please remove the directory manually or run in interactive mode"
+        exit 1
     fi
     
     read -p "Are you sure you want to PERMANENTLY DELETE this directory? (yes/N): " -r
@@ -110,7 +122,8 @@ else
     # Copy all files except excluded ones (matching rsync exclusions)
     # First copy everything except .git and output
     # Using -exec {} + for better performance and security
-    find "$SOURCE_PATH" -mindepth 1 -maxdepth 1 ! -name '.git' ! -name 'output' -exec cp -r {} "$DEST_PATH/" +
+    # Using -a (archive) to handle both files and directories correctly
+    find "$SOURCE_PATH" -mindepth 1 -maxdepth 1 ! -name '.git' ! -name 'output' -exec cp -a {} "$DEST_PATH/" +
     
     # Remove temporary editor files and OS-specific files
     find "$DEST_PATH" -type f \( -name '*.swp' -o -name '*.swo' -o -name '*~' -o -name '.DS_Store' \) -delete 2>/dev/null || true
