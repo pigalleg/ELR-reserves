@@ -19,6 +19,35 @@ To get started with this project, follow the steps below:
     Pkg.instantiate()
     ```
 
+## Copying the project
+
+To create a copy of the project (e.g., for running parallel simulations or creating backups), use the provided copy script:
+
+```sh
+./copy_project.sh /path/to/destination
+```
+
+This script will:
+- Copy all source code, models, input data, and scripts
+- Exclude version control history (`.git` directory)
+- Exclude output files (creates an empty `output` directory)
+- Preserve the directory structure
+- Set appropriate permissions on scripts
+
+Example:
+```sh
+# Copy project to a new location
+./copy_project.sh ~/energy_reserve_copy
+
+# Navigate to the copied project
+cd ~/energy_reserve_copy
+
+# Initialize Julia environment
+julia --project=.
+```
+
+After copying, you'll need to activate and instantiate the Julia environment in the new location (see Installation section).
+
 ## Package activation 
 
 To activate the Julia package before each run, you can use one of the following methods:
