@@ -44,6 +44,13 @@ SOURCE_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 print_info "Source project: $SOURCE_PATH"
 print_info "Destination: $DEST_PATH"
 
+# Validate destination path to prevent dangerous operations
+if [ -z "$DEST_PATH" ] || [ "$DEST_PATH" = "/" ] || [ "$DEST_PATH" = "$HOME" ] || [ "$DEST_PATH" = "." ]; then
+    print_error "Invalid destination path: '$DEST_PATH'"
+    print_error "Cannot use empty, root, home, or current directory as destination"
+    exit 1
+fi
+
 # Check if destination already exists
 if [ -d "$DEST_PATH" ]; then
     print_error "Destination directory already exists: $DEST_PATH"
@@ -80,7 +87,8 @@ else
     
     # Copy all files except excluded ones (matching rsync exclusions)
     # First copy everything except .git and output
-    find "$SOURCE_PATH" -mindepth 1 -maxdepth 1 ! -name '.git' ! -name 'output' -exec cp -r {} "$DEST_PATH/" \;
+    # Using -exec {} + for better performance and security
+    find "$SOURCE_PATH" -mindepth 1 -maxdepth 1 ! -name '.git' ! -name 'output' -exec cp -r {} "$DEST_PATH/" +
     
     # Remove temporary editor files and OS-specific files
     find "$DEST_PATH" -type f \( -name '*.swp' -o -name '*.swo' -o -name '*~' -o -name '.DS_Store' \) -delete 2>/dev/null || true
@@ -93,7 +101,8 @@ mkdir -p "$DEST_PATH/output"
 # Set permissions
 print_info "Setting permissions..."
 if [ -d "$DEST_PATH/scripts" ]; then
-    find "$DEST_PATH/scripts" -type f -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
+    # Using -exec {} + for better performance and security
+    find "$DEST_PATH/scripts" -type f -name "*.sh" -exec chmod +x {} + 2>/dev/null || true
 fi
 
 # Verify copy
