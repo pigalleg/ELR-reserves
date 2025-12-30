@@ -69,7 +69,6 @@ if command -v rsync &> /dev/null; then
     rsync -av \
         --exclude='.git' \
         --exclude='output/*' \
-        --exclude='.gitignore' \
         --exclude='*.swp' \
         --exclude='*.swo' \
         --exclude='*~' \
@@ -79,23 +78,22 @@ else
     # Fallback to cp with manual exclusions
     print_warning "rsync not found, using cp (slower)"
     
-    # Copy all files except excluded ones
+    # Copy all files except excluded ones (matching rsync exclusions)
+    # First copy everything except .git and output
     find "$SOURCE_PATH" -mindepth 1 -maxdepth 1 ! -name '.git' ! -name 'output' -exec cp -r {} "$DEST_PATH/" \;
+    
+    # Remove temporary editor files and OS-specific files
+    find "$DEST_PATH" -type f \( -name '*.swp' -o -name '*.swo' -o -name '*~' -o -name '.DS_Store' \) -delete 2>/dev/null || true
 fi
 
 # Create empty output directory in destination
 print_info "Creating empty output directory..."
 mkdir -p "$DEST_PATH/output"
 
-# Copy .gitignore to maintain project structure consistency
-if [ -f "$SOURCE_PATH/.gitignore" ]; then
-    cp "$SOURCE_PATH/.gitignore" "$DEST_PATH/.gitignore"
-fi
-
 # Set permissions
 print_info "Setting permissions..."
 if [ -d "$DEST_PATH/scripts" ]; then
-    chmod +x "$DEST_PATH/scripts"/*.sh 2>/dev/null || true
+    find "$DEST_PATH/scripts" -type f -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
 fi
 
 # Verify copy
