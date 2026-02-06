@@ -9,11 +9,13 @@ output/*
 !input/base_case_increased_storage_energy_v8.*.4
 !input/base_case_increased_storage_energy_v8.*.4.1
 /input/base_case_increased_storage_energy_v8.0.4.1
-
+!input/RTS-GMLC_v2.4.2
+!input/RTS-GMLC_v3.1
 
 !output/RTS-GMLC_envelope_benchmark_v9.0s
 !output/RTS-GMLC_e_reserve_benchmark_v9.0s
 
+!output/changelog.xlsx
 !output/solutions_v57.0.0.4s
 !output/solutions_v57.0.1.4s
 !output/solutions_v57.0.2.4s
@@ -49,3 +51,6 @@ output/*
 !output/solutions_v_s57.0.8.4s
 !output/solutions_v_s57.0.9.4s
 !output/solutions_v_s57.0.99.4s
+
+!output/RTS-GMLC_v32.1s
+!output/RTS-GMLC_v32.3s
