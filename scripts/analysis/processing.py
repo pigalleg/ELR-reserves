@@ -40,24 +40,46 @@ def parse_configuration_to_mu(x):
     # No pattern matches
     return None
 
-def parquet_to_solution(file_name, file_folder, solution_keys = None):
+def parquet_to_solution(file_name, file_folder, solution_keys = None, columns_by_key=None):
     if solution_keys is None:
         solution_keys = ['demand', 'generation', 'storage', 'reserve', 'energy_reserve', 'scalar', 'generation_parameters', 'storage_parameters', 'objective_function', 'dual_variables']
     keys = [k for k in solution_keys if os.path.isfile(os.path.join(file_folder, f"{file_name}_{k}.parquet"))]
-    aux = [read_parquet_and_convert(os.path.join(file_folder, f"{file_name}_{k}.parquet")) for k in keys]
+    aux = [
+        read_parquet_and_convert(
+            os.path.join(file_folder, f"{file_name}_{k}.parquet"),
+            columns=(columns_by_key or {}).get(k),
+        )
+        for k in keys
+    ]
     return {k: v for k, v in zip(keys, aux)}
 
-def read_parquet_and_convert(file):
-    print(file)
+# def _downcast_numeric(df):
+#     float_cols = df.select_dtypes(include=['float64']).columns
+#     int_cols = df.select_dtypes(include=['int64']).columns
+#     if len(float_cols) > 0:
+#         df[float_cols] = df[float_cols].apply(pd.to_numeric, downcast='float')
+#     if len(int_cols) > 0:
+#         df[int_cols] = df[int_cols].apply(pd.to_numeric, downcast='integer')
+#     return df
+
+def read_parquet_and_convert(file, columns=None):
     if not os.path.exists(file):
         warnings.warn(f"The file {file} does not exist.")
         return pd.DataFrame()
-    out = pq.read_table(file).to_pandas()
+    columns_to_read = columns
+    if columns is not None:
+        available_columns = set(pq.read_schema(file).names)
+        columns_to_read = [c for c in columns if c in available_columns]
+        if len(columns_to_read) == 0:
+            columns_to_read = None
+
+    out = pq.read_table(file, columns=columns_to_read).to_pandas()
     out.rename(columns={'scenario': 'iteration', 'mu': 'µ'}, inplace=True) # scenario --> iteration to aling suc's with ed's output
     if 'iteration' in out.columns:
         out['iteration'] = out['iteration'].apply(lambda x: re.sub(r'^scenario', 'iteration', x))
     if 'configuration' in out.columns and 'µ' not in out.columns: # uncomment in case µ is not in the output
         out['µ'] = out['configuration'].apply(parse_configuration_to_mu)
+    # return _downcast_numeric(out)
     return out
 
 def load_solutions(solution_name, solution_folder, days, **kwargs):
@@ -93,8 +115,28 @@ def load_solutions(solution_name, solution_folder, days, **kwargs):
     {'key1': DataFrame1, 'key2': DataFrame2, ...}
     """
     solution_keys = kwargs.pop("solution_keys", None)
-    solutions = [parquet_to_solution(solution_name, os.path.join(solution_folder, s), solution_keys) for s in [f"n_{d}" for d in days]]
-    return combine_solutions(solutions, **kwargs)
+    columns_by_key = kwargs.pop("columns_by_key", None)
+
+    # Stream by day and concatenate per key to avoid holding all daily dicts in memory.
+    per_key_frames = {}
+    for day in days:
+        day_solution = parquet_to_solution(
+            solution_name,
+            os.path.join(solution_folder, f"n_{day}"),
+            solution_keys,
+            columns_by_key=columns_by_key,
+        )
+        for key, df in day_solution.items():
+            if df.empty:
+                continue
+            for k, v in kwargs.items():
+                df[k] = v
+            per_key_frames.setdefault(key, []).append(df)
+
+    return {
+        key: pd.concat(frames, copy=False)
+        for key, frames in per_key_frames.items()
+    }
 
 
 
