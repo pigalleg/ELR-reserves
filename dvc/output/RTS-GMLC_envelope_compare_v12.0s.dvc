@@ -1,0 +1,6 @@
+outs:
+- md5: 70320d0ffa4da5bc40abc2438311945e.dir
+  size: 505719
+  nfiles: 36
+  hash: md5
+  path: ../../output/RTS-GMLC_envelope_compare_v12.0s

@@ -1,0 +1,6 @@
+outs:
+- md5: 6689ba669a97aaab5af1556884af6634.dir
+  size: 27814675
+  nfiles: 10
+  hash: md5
+  path: ../../input/base_case_increased_storage_energy_v8.0.5.4

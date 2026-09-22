@@ -1,0 +1,6 @@
+outs:
+- md5: 924c94d9fa5de5675ce4c9d3ce98b961.dir
+  size: 1185065
+  nfiles: 10
+  hash: md5
+  path: ../../output/solutions_v_s57.0.4.4s

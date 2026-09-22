@@ -1,0 +1,6 @@
+outs:
+- md5: 3c33688743e384d846dcd3f6ba462b79.dir
+  size: 1806461
+  nfiles: 38
+  hash: md5
+  path: ../../output/RTS-GMLC_e_reserve_compare_v12.0s

@@ -1,0 +1,6 @@
+outs:
+- md5: fae19de235b25b7000b1a279c0a01d53.dir
+  size: 104852827
+  nfiles: 6207
+  hash: md5
+  path: ../../output/RTS-GMLC_v24.1s
