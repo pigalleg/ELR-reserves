@@ -17,7 +17,29 @@ To get started with this project, follow the steps below:
     cd energy_reserve
     ```
 
-2. Open Julia and activate the environment:
+2. Install DVC with Google Drive support. The DVC documentation recommends using an isolated Python environment (for example, a virtual environment or `pipx`). With your chosen environment active, run:
+    ```sh
+    python -m pip install "dvc[gdrive]"
+    ```
+
+3. Configure the Google Drive credentials. The shared `gdrive` remote is already defined in `.dvc/config`; ask the repository maintainer for the confidential OAuth client ID and client secret, then store them only in your local DVC configuration:
+    ```sh
+    dvc remote modify --local gdrive gdrive_client_id "<client-id>"
+    dvc remote modify --local gdrive gdrive_client_secret "<client-secret>"
+    ```
+
+    The `--local` option writes these values to `.dvc/config.local`, which is ignored by Git. Do not commit either value or share them through public channels. These values identify the project's Google OAuth application; they are not your personal Google credentials.
+
+4. Download the DVC-managed data:
+    ```sh
+    dvc pull
+    ```
+
+    On first use, DVC starts a Google authorization flow. Sign in with a Google account that has access to the configured Drive folder and grant the requested permissions. DVC caches the resulting personal authorization token outside the repository; do not share this token. Each collaborator must authorize their own account separately.
+
+    See the [DVC Google Drive remote documentation](https://doc.dvc.org/user-guide/data-management/remote-storage/google-drive) for credential setup details, cache locations, reauthorization, service accounts, and troubleshooting.
+
+5. Open Julia and activate the environment:
     ```julia
     using Pkg
     Pkg.activate(".")
