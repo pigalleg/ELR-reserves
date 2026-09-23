@@ -63,70 +63,105 @@ To activate the Julia package before each run, you can use one of the following 
 
 ## Simulation framework run
 
-To run the complete simulation framework i.e., a Unit Committment followed by several Economic Dispatches (Monte Carlo), first include the main script in the Julia REPL:
+Run commands from the repository root in the activated Julia environment. The maintained workflow solves one deterministic unit commitment (UC) for each day and reserve configuration, then runs economic dispatch (ED) for scenarios from `ed/random_demand.csv`:
+
 ```julia
 include("./main.jl")
 ```
 
-Each simulation is launched individually for a given set of days.
+An input folder must contain the model data under `uc/` and the Monte Carlo demand scenarios at `ed/random_demand.csv`. The examples below use the DVC-managed `input/RTS-GMLC_v2.4.2` dataset.
 
-### Economic Dispatch (generate_ed_solutions)
+### Configuration-file runs
 
-**Envelope (classic reserve):**
+Configuration CSV files are read from `<input_folder>/uc/`. Pass `days` to select a subset of the days in the file, or omit it to run every listed day.
 
-```
+Envelope (classic reserve):
+
+```julia
 generate_ed_solutions(
-    days = [1,2,3,4,5,6,7],
-    μs = [0, 0.2, 0.3, 0.4, 0.6, 0.8, 0.9, 1],
-    input_folder = "./input/simulation_input",
-    output_folder = "./output/simulation_output",
-    energy_reserve = false  # default
+    days = collect(1:7),
+    day_µ_configurations_file = "configuration_envelopes_e_reserve_mu_v3",
+    input_folder = "./input/RTS-GMLC_v2.4.2",
+    output_folder = "./output/RTS-GMLC_envelope",
+    energy_reserve = false,
 )
 ```
 
-You can also supply `day_µ_configurations_file = "configuration_envelopes_e_reserve_mu"` instead of explicitly passing `days` and `μs`; when provided, `days` becomes optional and acts only as a filter on the days listed in that file.
+Energy-reserve (energy envelope):
 
-**Energy-reserve (energy envelope):**
-
-```
+```julia
 generate_ed_solutions(
-    days = [1,2,3,4,5,6,7],
-    μs = [1,1,1,1,1,1,1],
-    input_folder = "./input/simulation_input",
-    output_folder = "./output/simulation_output",
-    energy_reserve = true
+    days = collect(1:7),
+    day_µ_configurations_file = "configuration_e_reserves",
+    input_folder = "./input/RTS-GMLC_v2.4.2",
+    output_folder = "./output/RTS-GMLC_energy_reserve",
+    energy_reserve = true,
 )
 ```
 
-You can also supply `day_µ_configurations_file = "configuration_e_reserves"` instead of explicitly passing `days` and `μs`; when provided, `days` is optional and will filter the days listed in that configuration file.
+Do not include the `.csv` suffix in `day_µ_configurations_file`.
 
-Notes:
-- For energy-reserve, use μ = 1 (standard formulation). Additional μ values will scale the envelopes if provided.
-- Set `write=true` to persist results.
+### Explicit day and μ runs
 
-Common options:
-- `VRESERVE` (MWh/$): Value of committed reserve in the UC.
-- `VLGEN` (MWh/$): Value of curtailed generation in the ED (renewables and committed gen).
-- `thermal_reserve` (Bool): Allow thermal unit reserve provision in UC/ED.
-- `constrain_SOE_by_envelopes` (Bool): Enforce SOE envelopes during ED re-dispatch.
-- `mip_gap` (Float): MILP gap tolerance.
-- `ρ`, `ε` (Float): Model parameters (tune as needed).
-- `bidirectional_storage_reserve`, `variables_to_constrain`, `storage_reserve_repartition`: advanced options.
-- `write` (Bool): Save simulation outputs.
+Instead of a CSV, pass equal-length `days` and `μs` vectors. Each pair is one row; repeat a day to evaluate multiple μ values for that day. For example, this runs μ = 0 and μ = 1 on days 1 and 2:
 
-3.- Stochastic model
-
+```julia
+generate_ed_solutions(
+    days = [1, 1, 2, 2],
+    μs = [0.0, 1.0, 0.0, 1.0],
+    input_folder = "./input/RTS-GMLC_v2.4.2",
+    output_folder = "./output/RTS-GMLC_selected_mu",
+    energy_reserve = false,
+)
 ```
-generate_suc_solutions(days = [1,2,3,4,5,6,7], input_folder = "./input/SDG&E_ρ_0.8", output_folder = "./output/simulation_output", expected_min_SOE = false)
+
+For the standard energy-reserve formulation, use μ = 1:
+
+```julia
+generate_ed_solutions(
+    days = collect(1:7),
+    μs = ones(7),
+    input_folder = "./input/RTS-GMLC_v2.4.2",
+    output_folder = "./output/RTS-GMLC_energy_reserve",
+    energy_reserve = true,
+)
 ```
-If ``expected_min_SOE = true``, then the expected end-of-horizon SOE must be higuer or equal to the 'final_energy_proportion' parameter found in the 'Storage_data.csv' input file. The expected end-of-horizon SOE is set to the initial stored energy otherwise.
 
-Optional arguments include: 
-- VLGEN [MWh/$] value of curtailed generation in the SUC problem. 
-- write [BOOLEAN]: whether to save simulation results.
-- ...
+### Outputs and common options
 
-> Note: The stochastic model (generate_suc_solutions) is currently not maintained/working.
+By default, `write = true` saves feasible `s_uc_*.parquet` and `s_ed_*.parquet` files under `<output_folder>/n_<day>/`. Infeasible scalar results are written under `<output_folder>/infeasible/n_<day>/`. After all requested days finish, `write_post_processing_files = true` (the default) builds aggregate KPI parquet files in the output folder. To run without writing files, set both `write = false` and `write_post_processing_files = false`.
+
+The most commonly adjusted keyword arguments are:
+
+- `max_iterations`: Maximum number of ED scenario columns to run from `ed/random_demand.csv` for each UC solution (default: `1`).
+- `mip_gap`: Solver optimality gap (default: `1e-4`).
+- `thermal_reserve`: Allow thermal generators to provide reserve (default: `true`).
+- `storage_reserve_repartition`: Storage share of reserve; `-1` disables repartitioning, `0` assigns none to storage, and a positive value sets the storage share (default: `-1`).
+- `bidirectional_storage_reserve`: Allow storage to provide reserve while charging or discharging (default: `true`).
+- `constrain_SOE_by_envelopes`: Enforce the UC state-of-energy envelopes in ED (default: `false`).
+- `constrain_redispatch_by_energy`: Apply energy limits to ED redispatch (default: `false`).
+- `variables_to_constrain`: UC variable families used to restrict ED (default: `[:GEN, :CH, :DIS]`).
+- `VLOL`, `VLGEN`, `VRESERVE`, `VSRESUP`, `VSRESDN`, `VSSOEFinal`: Objective and slack penalty coefficients.
+- `set_storage_inflows`: Include storage inflows when available (default: `true`).
+- `write`: Persist per-day solutions (default: `true`).
+- `write_post_processing_files`: Generate aggregate KPI files after a run (default: `true`).
+
+To apply the same run settings to several datasets, pass `(input_folder, output_folder)` pairs through `folders` instead of the two individual folder keywords:
+
+```julia
+generate_ed_solutions(
+    days = [1],
+    μs = [1.0],
+    folders = [
+        ("./input/RTS-GMLC_v2.4", "./output/RTS-GMLC_v2.4"),
+        ("./input/RTS-GMLC_v2.4.2", "./output/RTS-GMLC_v2.4.2"),
+    ],
+)
+```
+
+### Stochastic unit commitment
+
+`generate_suc_solutions` is currently unmaintained and its wrapper is not runnable. Use `generate_ed_solutions` for the maintained UC plus Monte Carlo ED workflow.
 
 ## Batch execution
 
@@ -136,6 +171,8 @@ Two helper scripts are available under `./scripts` to run batches from the comma
 - [scripts/run_batches_e_reserve.sh](scripts/run_batches_e_reserve.sh): runs energy-reserve batches.
 
 Usage (make sure they are executable, e.g., `chmod +x scripts/run_batches_envelope.sh scripts/run_batches_e_reserve.sh`):
+
+The scripts split the requested day range into up to `num_instances` batches and launch each batch concurrently in a separate background Julia process. They wait for all processes to finish before returning.
 
 ```
 # Arguments: <initial_day> <final_day> <num_instances> <input_folder> <output_folder>
@@ -148,7 +185,7 @@ Usage (make sure they are executable, e.g., `chmod +x scripts/run_batches_envelo
 ```
 
 The scripts internally call `generate_ed_solutions` with the appropriate configuration files:
-- Envelope: `day_µ_configurations_file = "configuration_envelopes_e_reserve_mu"`, `energy_reserve = false`
+- Envelope: `day_µ_configurations_file = "configuration_envelopes_e_reserve_mu_v3"`, `energy_reserve = false`
 - Energy-reserve: `day_µ_configurations_file = "configuration_e_reserves"`, `energy_reserve = true`
 
 You can edit the scripts to adjust days, μ configurations, input/output folders, or flags before running.
@@ -158,13 +195,13 @@ You can edit the scripts to adjust days, μ configurations, input/output folders
 Envelope (default):
 
 ```
-julia --project=. -e 'include("main.jl"); generate_ed_solutions(days=[1], μs=[1], input_folder="./input/SDG&E_ρ_0.8", output_folder="./output/simulation_output", energy_reserve=false, write=true)'
+julia --project=. -e 'include("main.jl"); generate_ed_solutions(days=[1], μs=[1.0], input_folder="./input/RTS-GMLC_v2.4.2", output_folder="./output/RTS-GMLC_envelope", energy_reserve=false)'
 ```
 
 Energy-reserve:
 
 ```
-julia --project=. -e 'include("main.jl"); generate_ed_solutions(days=[1], μs=[1], input_folder="./input/SDG&E_ρ_0.8", output_folder="./output/simulation_output", energy_reserve=true, write=true)'
+julia --project=. -e 'include("main.jl"); generate_ed_solutions(days=[1], μs=[1.0], input_folder="./input/RTS-GMLC_v2.4.2", output_folder="./output/RTS-GMLC_energy_reserve", energy_reserve=true)'
 ```
 
 Adjust `days`, `μs`, and folders as needed. Set `write=true` to persist results to `./output`.
