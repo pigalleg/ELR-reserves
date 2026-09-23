@@ -28,7 +28,7 @@ To get started with this project, follow the steps below:
     dvc remote modify --local gdrive gdrive_client_secret "<client-secret>"
     ```
 
-    The `--local` option writes these values to `.dvc/config.local`, which is ignored by Git. Do not commit either value or share them through public channels. These values identify the project's Google OAuth application; they are not your personal Google credentials.
+    The `--local` option writes these values to `.dvc/config.local`, which is ignored by Git. **The OAuth client ID and client secret can be shared with authorized collaborators upon request to the repository maintainer.** These values identify the project's Google OAuth application; they are not your personal Google credentials.
 
 4. Download the DVC-managed data:
     ```sh

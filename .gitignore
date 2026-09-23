@@ -3,6 +3,7 @@
 git-filter-repo.py 
 *large_file.csv
 *ignore*
+!.dvc/.gitignore
 
 # Large datasets and solver outputs are managed by DVC. Their metadata lives
 # under dvc/ so DVC can discover it while these data directories stay ignored.
