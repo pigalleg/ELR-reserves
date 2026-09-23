@@ -1,6 +1,11 @@
-# Energy Reserve
+# Comparative analysis of reserve formulations: Leveraging flexibility from energy-limited resources
 
-This repository contains the code for the Energy Reserve project.
+This repository contains the code accompanying the following publication:
+
+> **Comparative analysis of reserve formulations: Leveraging flexibility from energy-limited resources**  
+> **Pablo Gallegos, Elina Spyrou, and Enzo Sauma**  
+> *Electric Power Systems Research*, Volume 263, 2027, Article 113663.  
+> DOI: https://doi.org/10.1016/j.epsr.2026.113663
 
 ## Installation
 
