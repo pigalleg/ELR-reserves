@@ -1,4 +1,4 @@
-# Comparative analysis of reserve formulations: Leveraging flexibility from energy-limited resources
+# Energy-limited Resources Reserves
 
 This repository contains the code accompanying the following publication:
 
@@ -22,24 +22,16 @@ To get started with this project, follow the steps below:
     python -m pip install "dvc[gdrive]"
     ```
 
-3. Configure the Google Drive credentials. The shared `gdrive` remote is already defined in `.dvc/config`; ask the repository maintainer for the confidential OAuth client ID and client secret, then store them only in your local DVC configuration:
-    ```sh
-    dvc remote modify --local gdrive gdrive_client_id "<client-id>"
-    dvc remote modify --local gdrive gdrive_client_secret "<client-secret>"
-    ```
-
-    The `--local` option writes these values to `.dvc/config.local`, which is ignored by Git. **The OAuth client ID and client secret can be shared with authorized collaborators upon request to the repository maintainer.** These values identify the project's Google OAuth application; they are not your personal Google credentials.
-
-4. Download the DVC-managed data:
+3. Download the DVC-managed data:
     ```sh
     dvc pull
     ```
 
-    On first use, DVC starts a Google authorization flow. Sign in with a Google account that has access to the configured Drive folder and grant the requested permissions. DVC caches the resulting personal authorization token outside the repository; do not share this token. Each collaborator must authorize their own account separately.
+    On first use, DVC starts a Google authorization flow. **Sign in with a Google account that has been granted access to the configured Drive folder by the repository maintainer, then grant the requested permissions.** DVC caches the resulting personal authorization token outside the repository; do not share this token. Each collaborator must authorize their own account separately.
 
     See the [DVC Google Drive remote documentation](https://doc.dvc.org/user-guide/data-management/remote-storage/google-drive) for credential setup details, cache locations, reauthorization, service accounts, and troubleshooting.
 
-5. Open Julia and activate the environment:
+4. Open Julia and activate the environment:
     ```julia
     using Pkg
     Pkg.activate(".")
@@ -176,35 +168,25 @@ The scripts split the requested day range into up to `num_instances` batches and
 
 ```
 # Arguments: <initial_day> <final_day> <num_instances> <input_folder> <output_folder>
+```
 
+The following commands generate the results presented in the published article:
+
+```
 # Envelope (classic reserve) batch
-./scripts/run_batches_envelope.sh 1 365 8 RTS-GMLC_v2.4.2 RTS-GMLC_v24.1su
+./scripts/run_batches_envelope.sh 1 365 8 RTS-GMLC_v2.4.2 RTS-GMLC_v32.3s
 
 # Energy-reserve batch
-./scripts/run_batches_e_reserve.sh 1 365 8 RTS-GMLC_v2.4.2 RTS-GMLC_v24.1su
+./scripts/run_batches_e_reserve.sh 1 365 8 RTS-GMLC_v2.4.2 RTS-GMLC_v32.1s
 ```
+
+Warning: these commands might overwrite existing results. Change the output-folder name before running them if necessary.
 
 The scripts internally call `generate_ed_solutions` with the appropriate configuration files:
 - Envelope: `day_µ_configurations_file = "configuration_envelopes_e_reserve_mu_v3"`, `energy_reserve = false`
 - Energy-reserve: `day_µ_configurations_file = "configuration_e_reserves"`, `energy_reserve = true`
 
 You can edit the scripts to adjust days, μ configurations, input/output folders, or flags before running.
-
-## Quick start: run envelope vs. energy-reserve
-
-Envelope (default):
-
-```
-julia --project=. -e 'include("main.jl"); generate_ed_solutions(days=[1], μs=[1.0], input_folder="./input/RTS-GMLC_v2.4.2", output_folder="./output/RTS-GMLC_envelope", energy_reserve=false)'
-```
-
-Energy-reserve:
-
-```
-julia --project=. -e 'include("main.jl"); generate_ed_solutions(days=[1], μs=[1.0], input_folder="./input/RTS-GMLC_v2.4.2", output_folder="./output/RTS-GMLC_energy_reserve", energy_reserve=true)'
-```
-
-Adjust `days`, `μs`, and folders as needed. Set `write=true` to persist results to `./output`.
 
 ## Model parameter categorization
 
