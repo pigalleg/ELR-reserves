@@ -1,4 +1,4 @@
-# Energy-limited Resources Reserves
+# Energy-Limited Resource Reserves
 
 This repository contains the code accompanying the following publication:
 
